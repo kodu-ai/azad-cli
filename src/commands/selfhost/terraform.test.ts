@@ -15,6 +15,8 @@ import { join } from "node:path"
 import type { Fetcher } from "../../http"
 import { run, type Run } from "../../process"
 import {
+  AZAD_TERRAFORM_SHA256,
+  AZAD_TERRAFORM_VERSION,
   checksumFor,
   driverPath,
   prepareTerraform,
@@ -29,21 +31,23 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true })
 })
 
-// A version with no pinned digest, so the fake tarballs below are accepted.
+// A test version; each fake release below is pinned by its own digest.
 const VERSION = "0.0.0-test"
 const URL = `https://github.com/kodu-ai/azad-terraform/releases/download/v${VERSION}/azad-terraform-${VERSION}.tar.gz`
 
 /**
  * A local stand-in for an azad-terraform release: a tarball of `tops`
  * (default the single `azad-terraform-<version>/` with its drivers) and its
- * sha256sum file, served by a fetcher that records each URL. `bun install`
- * is recorded and answered with `installStatus`; tar runs for real.
+ * sha256sum file, served by a fetcher that records each URL, and `pins`
+ * naming its digest (or `pin`). `bun install` is recorded and answered with
+ * `installStatus`; tar runs for real.
  */
 function release(
   options: {
     tops?: string[]
     drivers?: string[]
     checksum?: (digest: string) => string
+    pin?: string
     installStatus?: number
   } = {}
 ) {
@@ -96,7 +100,8 @@ function release(
     directory: join(root, "home", ".azad", "cache", "azad-terraform", VERSION),
     url: URL,
   }
-  return { root, files, fetcher, requests, execute, installs, selection }
+  const pins = { [VERSION]: options.pin ?? digest }
+  return { root, files, fetcher, requests, execute, installs, selection, pins }
 }
 
 test("the pinned release resolves to its GitHub asset and cache folder; --terraform-dir, then AZAD_TERRAFORM_DIR, override it", () => {
@@ -106,6 +111,10 @@ test("the pinned release resolves to its GitHub asset and cache folder; --terraf
     directory: "/home/person/.azad/cache/azad-terraform/0.0.1",
     url: "https://github.com/kodu-ai/azad-terraform/releases/download/v0.0.1/azad-terraform-0.0.1.tar.gz",
   })
+  // The release this CLI deploys with is always pinned.
+  expect(AZAD_TERRAFORM_SHA256[AZAD_TERRAFORM_VERSION]).toMatch(
+    /^[a-f0-9]{64}$/u
+  )
   expect(
     selectTerraform({
       home: "/home/person",
@@ -128,6 +137,7 @@ test("a release is downloaded, verified, extracted into the cache and installed 
   const directory = await prepareTerraform(f.selection, {
     execute: f.execute,
     fetcher: f.fetcher,
+    pins: f.pins,
     note: (message) => notes.push(message),
   })
   expect(directory).toBe(f.selection.directory)
@@ -146,15 +156,23 @@ test("a release is downloaded, verified, extracted into the cache and installed 
   await prepareTerraform(f.selection, {
     execute: f.execute,
     fetcher: f.fetcher,
+    pins: f.pins,
   })
   expect(f.requests).toHaveLength(2)
   expect(f.installs).toHaveLength(1)
 })
 
 test("a download that does not match its published checksum installs nothing", async () => {
-  const f = release({ checksum: () => `${"0".repeat(64)}  azad-terraform-${VERSION}.tar.gz\n` })
+  const f = release({
+    checksum: () => `${"0".repeat(64)}  azad-terraform-${VERSION}.tar.gz\n`,
+    pin: "0".repeat(64),
+  })
   await expect(
-    prepareTerraform(f.selection, { execute: f.execute, fetcher: f.fetcher })
+    prepareTerraform(f.selection, {
+      execute: f.execute,
+      fetcher: f.fetcher,
+      pins: f.pins,
+    })
   ).rejects.toThrow(
     "The azad-terraform 0.0.0-test download does not match its published SHA-256 checksum. Nothing was installed; retry the download."
   )
@@ -166,9 +184,25 @@ test("a download that does not match its published checksum installs nothing", a
     prepareTerraform(unlisted.selection, {
       execute: unlisted.execute,
       fetcher: unlisted.fetcher,
+      pins: unlisted.pins,
     })
   ).rejects.toThrow("does not list azad-terraform-0.0.0-test.tar.gz")
   expect(unlisted.requests).toEqual([`${URL}.sha256`])
+})
+
+test("a version this CLI pins no checksum for is refused before any download", async () => {
+  const f = release()
+  await expect(
+    prepareTerraform(f.selection, {
+      execute: f.execute,
+      fetcher: f.fetcher,
+      pins: {},
+    })
+  ).rejects.toThrow(
+    "This azad release pins no checksum for azad-terraform 0.0.0-test, so it cannot verify the download."
+  )
+  expect(f.requests).toEqual([])
+  expect(existsSync(f.selection.directory)).toBe(false)
 })
 
 test("a release whose published checksum differs from this CLI's pin installs nothing", async () => {
@@ -190,13 +224,21 @@ test("offline and unpublished releases fail with what to do, and nothing is inst
     throw new TypeError("fetch failed")
   }
   await expect(
-    prepareTerraform(f.selection, { execute: f.execute, fetcher: offline })
+    prepareTerraform(f.selection, {
+      execute: f.execute,
+      fetcher: offline,
+      pins: f.pins,
+    })
   ).rejects.toThrow(
     `Could not download azad-terraform 0.0.0-test from ${URL}.sha256. Check your internet connection and proxy settings, then retry. To deploy offline, point --terraform-dir at a local azad-terraform checkout.`
   )
   f.files.clear()
   await expect(
-    prepareTerraform(f.selection, { execute: f.execute, fetcher: f.fetcher })
+    prepareTerraform(f.selection, {
+      execute: f.execute,
+      fetcher: f.fetcher,
+      pins: f.pins,
+    })
   ).rejects.toThrow(
     "azad-terraform 0.0.0-test, which this azad release deploys with, is not published at"
   )
@@ -211,7 +253,11 @@ test("an archive that is not one azad-terraform-<version>/ directory with its dr
   ]) {
     const f = release(options)
     await expect(
-      prepareTerraform(f.selection, { execute: f.execute, fetcher: f.fetcher })
+      prepareTerraform(f.selection, {
+      execute: f.execute,
+      fetcher: f.fetcher,
+      pins: f.pins,
+    })
     ).rejects.toThrow("Nothing was installed.")
     expect(existsSync(f.selection.directory)).toBe(false)
     expect(f.installs).toEqual([])
@@ -222,7 +268,11 @@ test("an archive that is not one azad-terraform-<version>/ directory with its dr
 test("a failed dependency install leaves no ready release, and the next run starts again from the download", async () => {
   const f = release({ installStatus: 1 })
   await expect(
-    prepareTerraform(f.selection, { execute: f.execute, fetcher: f.fetcher })
+    prepareTerraform(f.selection, {
+      execute: f.execute,
+      fetcher: f.fetcher,
+      pins: f.pins,
+    })
   ).rejects.toThrow("Installing the dependencies of azad-terraform 0.0.0-test")
   expect(terraformReady(f.selection)).toBe(false)
   const retry = release()
@@ -230,6 +280,7 @@ test("a failed dependency install leaves no ready release, and the next run star
   await prepareTerraform(retry.selection, {
     execute: retry.execute,
     fetcher: retry.fetcher,
+    pins: retry.pins,
   })
   expect(retry.requests).toEqual([`${URL}.sha256`, URL])
   expect(terraformReady(f.selection)).toBe(true)

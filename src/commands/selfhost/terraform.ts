@@ -24,7 +24,8 @@ export const AZAD_TERRAFORM_VERSION = "0.0.1"
  * The SHA-256 of each azad-terraform release tarball this CLI trusts, pinned
  * when the release is adopted. The download must match both the release's
  * own checksum file and this pin, so an asset replaced after publication is
- * refused even when its checksum file was replaced with it.
+ * refused even when its checksum file was replaced with it. A version without
+ * a pin is never downloaded.
  */
 export const AZAD_TERRAFORM_SHA256: Readonly<Record<string, string>> = {
   "0.0.1": "b997103ecb48fd97f39e4484254645efe8d08f37584826ea10b5861cc54566d4",
@@ -187,9 +188,10 @@ function memberInside(name: string, top: string): boolean {
  * gets `bun install --frozen-lockfile` there. A marker file records the
  * completed preparation; an interrupted one is redone from the download.
  *
- * @throws CliError when the download fails (offline, unpublished), the
- * checksum does not match the release's checksum file or this CLI's pin, the archive is malformed, or the dependency
- * install fails. Nothing partial is ever used.
+ * @throws CliError when this CLI pins no checksum for the version, the
+ * download fails (offline, unpublished), the checksum does not match the
+ * release's checksum file or this CLI's pin, the archive is malformed, or the
+ * dependency install fails. Nothing partial is ever used.
  */
 export async function prepareTerraform(
   selection: TerraformSelection,
@@ -226,6 +228,11 @@ export async function prepareTerraform(
   const name = `azad-terraform-${version}.tar.gz`
   const top = `azad-terraform-${version}`
   const fetcher = options.fetcher ?? fetch
+  const pinned = (options.pins ?? AZAD_TERRAFORM_SHA256)[version]
+  if (!pinned)
+    throw new CliError(
+      `This azad release pins no checksum for azad-terraform ${version}, so it cannot verify the download. Nothing was installed; install an azad release that pins it, or point --terraform-dir at a local azad-terraform checkout.`
+    )
   options.note?.(`Downloading azad-terraform ${version}…`)
   const expected = checksumFor(
     new TextDecoder().decode(await download(`${url}.sha256`, version, fetcher)),
@@ -235,8 +242,7 @@ export async function prepareTerraform(
     throw new CliError(
       `The checksum file of azad-terraform ${version} (${url}.sha256) does not list ${name}. Nothing was installed.`
     )
-  const pinned = (options.pins ?? AZAD_TERRAFORM_SHA256)[version]
-  if (pinned && expected !== pinned)
+  if (expected !== pinned)
     throw new CliError(
       `The checksum published for azad-terraform ${version} does not match the one this CLI pins. Nothing was installed; report this to the Azad maintainers.`
     )
@@ -250,9 +256,10 @@ export async function prepareTerraform(
   const scratch = join(cache, `.download-${randomUUID()}`)
   mkdirSync(scratch, { mode: 0o700 })
   try {
-    const file = join(scratch, name)
-    writeFileSync(file, archive, { mode: 0o600 })
-    const listing = execute("tar", ["-tzf", file], scratch, true)
+    writeFileSync(join(scratch, name), archive, { mode: 0o600 })
+    // tar runs in the scratch directory with the archive's bare name: a
+    // Windows drive path such as C:\... would read to GNU tar as a remote host.
+    const listing = execute("tar", ["-tzf", name], scratch, true)
     const members = listing.stdout.split(/\r?\n/u).filter(Boolean)
     if (
       listing.status !== 0 ||
@@ -262,7 +269,7 @@ export async function prepareTerraform(
       throw new CliError(
         `The azad-terraform ${version} archive is not a single ${top}/ directory. Nothing was installed.`
       )
-    if (execute("tar", ["-xzf", file, "-C", scratch], scratch, true).status !== 0)
+    if (execute("tar", ["-xzf", name], scratch, true).status !== 0)
       throw new CliError(
         `Could not extract the azad-terraform ${version} archive. Check the free space in ${cache}, then retry.`
       )
