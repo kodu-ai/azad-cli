@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # The release workflow runs these same checks, builds and smoke tests.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  BUN_VERSION: "1.4.4"
+
+jobs:
+  check:
+    name: Typecheck, tests and skill
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Typecheck (bun check)
+        run: bun run typecheck
+      - name: Unit tests
+        run: bun test
+      - name: Lint install.sh
+        run: shellcheck install.sh
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: The skills CLI discovers the setup skill
+        env:
+          DISABLE_TELEMETRY: "1"
+          DO_NOT_TRACK: "1"
+        run: |
+          home="$RUNNER_TEMP/skills-home"
+          mkdir -p "$home"
+          HOME="$home" npx --yes skills@1.7.4 add "$GITHUB_WORKSPACE" --list | tee "$RUNNER_TEMP/skills.txt"
+          grep -q "azad-setup" "$RUNNER_TEMP/skills.txt"
+
+  build:
+    name: Build executables
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - name: Build every platform with the release assets
+        run: bun build.ts --all --release --outdir dist
+      - name: Check the checksums
+        run: cd dist && sha256sum --check SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: azad-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    name: Smoke (${{ matrix.platform }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-latest
+            executable: azad-linux-x64
+            terminal: true
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            executable: azad-linux-arm64
+            terminal: false
+          - platform: darwin-arm64
+            runner: macos-latest
+            executable: azad-darwin-arm64
+            terminal: true
+          - platform: windows-x64
+            runner: windows-latest
+            executable: azad-windows-x64.exe
+            terminal: false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: azad-dist
+          path: dist
+      - name: --version names this commit, --help prints usage
+        env:
+          EXECUTABLE: dist/${{ matrix.executable }}
+        run: |
+          chmod +x "$EXECUTABLE"
+          version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json)
+          actual=$("$EXECUTABLE" --version | tr -d '\r')
+          echo "$actual"
+          test "$actual" = "$version ($(git rev-parse HEAD))"
+          "$EXECUTABLE" --help | grep -q "azad --doctor"
+          "$EXECUTABLE" selfhost --help | grep -q "azad --doctor"
+      - name: Prepare pexpect
+        if: matrix.terminal
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pexpect"
+          "$RUNNER_TEMP/pexpect/bin/pip" install pexpect==4.9.0
+      - name: The wizard in a real terminal, with local fakes for every provider
+        if: matrix.terminal
+        run: '"$RUNNER_TEMP/pexpect/bin/python" test/terminal.py "dist/${{ matrix.executable }}"'
+      - name: Noninteractive setup, doctor and reset with private local fixtures
+        if: matrix.terminal
+        run: python3 test/automation.py "dist/${{ matrix.executable }}"

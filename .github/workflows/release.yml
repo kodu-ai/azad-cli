@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Tag matches package.json
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The tag is v<package.json version>
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json)
+          echo "package.json version: $version, tag: $TAG"
+          test -n "$version"
+          test "$TAG" = "v$version"
+
+  ci:
+    name: Checks, build and smoke tests
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish the GitHub release
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: azad-dist
+          path: dist
+      - name: Check the assets against SHA256SUMS
+        run: |
+          cd dist
+          sha256sum --check SHA256SUMS
+          for asset in azad-linux-x64 azad-linux-arm64 azad-darwin-arm64 azad-darwin-x64 azad-windows-x64.exe install.sh azad-setup.md; do
+            grep -q "  $asset\$" SHA256SUMS
+          done
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=()
+          case "$TAG" in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$TAG" dist/* \
+            --verify-tag \
+            --title "azad ${TAG#v}" \
+            --generate-notes \
+            "${prerelease[@]}"
