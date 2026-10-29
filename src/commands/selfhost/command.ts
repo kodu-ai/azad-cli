@@ -107,6 +107,26 @@ const HELP = [
   "",
 ].join("\n")
 
+/**
+ * The parsed flags. A parser error becomes a CliError that names the problem
+ * but not the argument, which may be a mistyped secret.
+ */
+function parseOptions(argv: string[]) {
+  try {
+    return parseArgs({ args: argv, options: OPTIONS, strict: true }).values
+  } catch (error) {
+    const code =
+      error instanceof Error && "code" in error ? error.code : undefined
+    throw new CliError(
+      code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE"
+        ? "An option is missing its value, or a flag was given one. Run azad --help for usage."
+        : code === "ERR_PARSE_ARGS_UNEXPECTED_POSITIONAL"
+          ? "Unexpected argument; options start with --. Run azad --help for usage."
+          : "Unknown option. Run azad --help for usage."
+    )
+  }
+}
+
 /** The saved settings in an instance directory, read without creating it; undefined when there are none. */
 function savedSettings(directory: string): Record<string, string> | undefined {
   const path = join(directory, ".env")
@@ -190,7 +210,7 @@ function doctor(
 async function selfhostMain(argv: string[]): Promise<number> {
   // Windows has no permission bits; see ownerOnly in config.ts.
   if (process.platform !== "win32") process.umask(0o077)
-  const { values } = parseArgs({ args: argv, options: OPTIONS, strict: true })
+  const values = parseOptions(argv)
   if (values.version) {
     process.stdout.write(`${VERSION} (${COMMIT})\n`)
     return 0
@@ -391,7 +411,6 @@ async function selfhostMain(argv: string[]): Promise<number> {
  */
 export const selfhost: Command = {
   name: "selfhost",
-  summary: "Set up, deploy, check or reset a self-hosted Azad (the default)",
   async run(argv) {
     const structured = argv.some((arg) => STRUCTURED.includes(arg))
     try {

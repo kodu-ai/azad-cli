@@ -10,7 +10,8 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { LocalConfig } from "./config"
-import { instanceTerraformDirectory, type Run } from "./deploy"
+import type { Run } from "../../process"
+import { instanceTerraformDirectory } from "./deploy"
 import { resetInstance } from "./reset"
 import type { TerraformSelection } from "./terraform"
 

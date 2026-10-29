@@ -1,8 +1,5 @@
 import {
-  spawn,
   spawnSync,
-  type ChildProcess,
-  type SpawnOptions,
   type SpawnSyncOptionsWithStringEncoding,
 } from "node:child_process"
 import { statSync } from "node:fs"
@@ -135,19 +132,6 @@ export function spawnToolSync(
 ) {
   const tool = toolCommand(command, args, { env: options.env })
   return spawnSync(tool.command, tool.args, {
-    ...options,
-    windowsVerbatimArguments: tool.windowsVerbatimArguments,
-  })
-}
-
-/** `spawn` for an external tool, resolved as {@link toolCommand} describes. */
-export function spawnTool(
-  command: string,
-  args: string[],
-  options: SpawnOptions
-): ChildProcess {
-  const tool = toolCommand(command, args, { env: options.env })
-  return spawn(tool.command, tool.args, {
     ...options,
     windowsVerbatimArguments: tool.windowsVerbatimArguments,
   })

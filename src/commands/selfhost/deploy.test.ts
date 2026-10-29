@@ -13,11 +13,11 @@ import { join } from "node:path"
 import { parse } from "dotenv"
 import { LocalConfig, serializeEnv, upsertPrivateEnv } from "./config"
 import { saveBootstrapToken } from "./bootstrap-credentials"
+import type { Run } from "../../process"
 import {
   deployInstance,
   instanceTerraformDirectory,
   type DeploySources,
-  type Run,
 } from "./deploy"
 import { fakeCloudflare } from "./realtimekit-fixture"
 import type { Questions } from "./wizard"

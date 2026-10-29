@@ -29,6 +29,7 @@ import {
   type ClerkDnsChecks,
 } from "./clerk"
 import { githubInstallUrl } from "./github-app"
+import { shellWord } from "./instance"
 import {
   describeTerraform,
   driverPath,
@@ -37,8 +38,6 @@ import {
 } from "./terraform"
 import type { Questions } from "./wizard"
 import type { Fetcher } from "../../http"
-
-export { run, type Run } from "../../process"
 
 const varsSchema = z.looseObject({
   cloudflare: z.looseObject({ web_origin: z.string(), account_id: z.string() }),
@@ -383,7 +382,9 @@ export async function deployInstance(
   invoke(["plan", "-out=terraform.tfplan"])
   if (
     !(await questions.confirm(
-      "Apply this plan to your selected customer accounts?",
+      values.AZAD_CLI_DATABASE_PROVIDER === "cloudsql"
+        ? `Apply this plan to your Cloudflare account and Google Cloud project ${values.AZAD_CLI_GCP_PROJECT}?`
+        : "Apply this plan to your Cloudflare account?",
       false,
       "apply"
     ))
@@ -399,7 +400,7 @@ export async function deployInstance(
     await clerkReady(values, questions, options.fetcher)
   await installGithubApp(values, questions)
   questions.note(
-    `Azad is live at https://${values.AZAD_CLI_WEB_HOST}. Sign in, then connect GitHub from your project.${nativeClientsNote(values)}\nBack up ${config.directory}: it holds this installation's settings, Terraform state and installer state, and updates need it.`
+    `Azad is live at https://${values.AZAD_CLI_WEB_HOST}. Sign in, then connect GitHub from your project.${nativeClientsNote(values)}\nBack up ${config.directory}: it holds this installation's settings, Terraform state and deploy state, and updates need it.`
   )
   return "applied"
 }
@@ -527,7 +528,7 @@ async function installGithubApp(
   )
 }
 
-/** Background Clerk DNS rechecks during apply, for an app the installer created. */
+/** Background Clerk DNS rechecks during apply, for a Clerk app setup created. */
 function clerkDnsChecks(
   values: Record<string, string>,
   options: { waitForClerk?: boolean }
@@ -595,7 +596,7 @@ export function driverArguments(
 
 /**
  * Google Cloud install: azad-terraform's scripts/gcp.ts writes the instance's
- * variables once (the credentials stay in the installer's private file, which
+ * variables once (the credentials stay in the instance's private `.env`, which
  * the deploy step reads), then each plan is shown and applied only once it is
  * confirmed (default No), exactly as saved. A first install has two plans:
  * the cluster and Clerk's DNS records, then everything else, which Terraform
@@ -687,7 +688,16 @@ async function deployGoogleCloud(
       `Set your GitHub App's webhook secret to GITHUB_WEBHOOK_SECRET from ${join(files, "celld-install", "secrets.json")}.`
     )
   await installGithubApp(values, questions)
-  const output = `bun --no-env-file ${driverPath(terraform, "gcp")} output --instance-dir ${config.directory}`
+  const output = [
+    "bun",
+    "--no-env-file",
+    driverPath(terraform, "gcp"),
+    "output",
+    "--instance-dir",
+    config.directory,
+  ]
+    .map(shellWord)
+    .join(" ")
   const agentMachine =
     values.AZAD_CLI_GCP_AGENT_MACHINE &&
     values.AZAD_CLI_GCP_AGENT_MACHINE !== "none"

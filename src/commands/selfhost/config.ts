@@ -26,7 +26,7 @@ import { parse } from "dotenv"
  * is protected by the access control list it inherits from its folder. The
  * default instance directory is under the person's profile
  * (`%USERPROFILE%\.azad`), whose list admits only that account,
- * Administrators and SYSTEM. The installer does not change access lists.
+ * Administrators and SYSTEM. azad does not change access lists.
  */
 export function ownerOnly(
   stat: Pick<Stats, "mode">,

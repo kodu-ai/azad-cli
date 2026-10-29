@@ -19,7 +19,7 @@ import {
 } from "./config"
 import { CliError } from "../../error"
 import { validateBootstrapFile } from "./bootstrap-credentials"
-import type { Run } from "./deploy"
+import type { Run } from "../../process"
 import { driverPath } from "./terraform"
 
 /** The checkouts a token operation runs: the app source it binds to, and the azad-terraform directory whose driver runs. */
@@ -363,7 +363,7 @@ async function performBootstrap(
     )
   if (!existing && existsSync(location.state))
     throw new CliError(
-      "Cloudflare bootstrap state has no matching installer record. Restore the original record; no replacement tokens were created."
+      "Cloudflare bootstrap state has no matching azad record. Restore the original record; no replacement tokens were created."
     )
   validateBootstrapFile(values.AZAD_CLI_CLOUDFLARE_BOOTSTRAP_FILE ?? "")
   const bootstrapToken = readPrivateEnv(

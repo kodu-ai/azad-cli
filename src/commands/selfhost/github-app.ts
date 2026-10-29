@@ -111,7 +111,7 @@ export async function convertManifestCode(
       method: "POST",
       headers: {
         Accept: "application/vnd.github+json",
-        "User-Agent": "Azad-installer",
+        "User-Agent": "azad-cli",
         "X-GitHub-Api-Version": "2022-11-28",
       },
       redirect: "error",
@@ -309,7 +309,7 @@ export async function githubInstallationAccounts(
     headers: {
       Authorization: `Bearer ${githubAppJwt(options.appId, options.privateKey)}`,
       Accept: "application/vnd.github+json",
-      "User-Agent": "Azad-installer",
+      "User-Agent": "azad-cli",
       "X-GitHub-Api-Version": "2022-11-28",
     },
     signal: options.signal,

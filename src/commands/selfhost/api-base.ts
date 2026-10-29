@@ -1,9 +1,9 @@
 import { CliError } from "../../error"
 
 /**
- * Provider API endpoints the installer calls itself. Each honors the variable
- * that provider's own tooling reads, so a network that reaches the provider
- * through an API gateway configures the installer the same way:
+ * Provider API endpoints azad calls itself. Each honors the variable that
+ * provider's own tooling reads, so a network that reaches the provider
+ * through an API gateway configures azad the same way:
  *
  * - `CLOUDFLARE_API_BASE_URL` (Wrangler), including the `/client/v4` path;
  * - `CLERK_API_URL` (Clerk's backend SDKs), without the `/v1` version path;

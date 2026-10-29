@@ -3,8 +3,8 @@ import { resolve } from "node:path"
 import { z } from "zod"
 import { LocalConfig, readPrivateEnv } from "./config"
 import { commandEnvironment } from "../../command-environment"
-import { spawnToolSync } from "../../process"
-import { deployInstance, type Run } from "./deploy"
+import { spawnToolSync, type Run } from "../../process"
+import { deployInstance } from "./deploy"
 import { selectTerraform, type TerraformSelection } from "./terraform"
 import { fixedSettingChanges, fixedSettingsMessage } from "./deployed-settings"
 import { CliError } from "../../error"
@@ -80,7 +80,7 @@ async function definitions(
         },
         async choose(label, options, initial, key) {
           if (!key)
-            throw new CliError("An installer choice has no input key.")
+            throw new CliError("A setup choice has no input key.")
           choices.set(key, {
             label,
             values: options.map((option) => option.value),
@@ -100,7 +100,7 @@ async function definitions(
         },
         async confirm(label, initial, key) {
           if (!key)
-            throw new CliError("An installer choice has no input key.")
+            throw new CliError("A setup choice has no input key.")
           choices.set(key, { label, initial })
           return true
         },
@@ -283,7 +283,7 @@ export async function runAutomation(
     },
     async choose(_message, _choices, initial, key) {
       if (!key)
-        throw new CliError("An installer choice has no input key.")
+        throw new CliError("A setup choice has no input key.")
       usedChoices.add(key)
       return String(
         input.choices[key] ?? (key === "database" ? requestedProvider : initial)
@@ -291,7 +291,7 @@ export async function runAutomation(
     },
     async confirm(_message, initial, key) {
       if (!key)
-        throw new CliError("An installer choice has no input key.")
+        throw new CliError("A setup choice has no input key.")
       usedChoices.add(key)
       if (input.choices[key] !== undefined) return input.choices[key] === true
       // Configs written before the optional-settings switch answer its nested

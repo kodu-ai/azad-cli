@@ -6,10 +6,10 @@ import {
   cloudflareRoot,
   driverArguments,
   instanceTerraformDirectory,
-  type Run,
 } from "./deploy"
 import { CliError } from "../../error"
-import { spawnToolSync } from "../../process"
+import { spawnToolSync, type Run } from "../../process"
+import { shellWord } from "./instance"
 import {
   AZAD_TERRAFORM_REPOSITORY,
   selectTerraform,
@@ -191,7 +191,7 @@ function inspectInstanceState(files: string): StateCheck {
       return {
         root: files,
         state: "unverified",
-        reason: `it records a ${backend.type} backend, which the installer does not read`,
+        reason: `it records a ${backend.type} backend, which azad does not read`,
       }
     const states = [join(files, "terraform.tfstate")]
     const workspaces = join(files, "workspaces")
@@ -227,13 +227,6 @@ function readVars(directory: string): z.infer<typeof varsSchema> | undefined {
   } catch {
     return undefined
   }
-}
-
-/** A path as one shell word. */
-function shellWord(value: string): string {
-  return /^[\w@%+=:,./-]+$/u.test(value)
-    ? value
-    : `'${value.replaceAll("'", "'\\''")}'`
 }
 
 type Removal = { path: string; what: string }
@@ -325,7 +318,7 @@ function removalSteps(
     const destroy = `terraform -chdir=${shellWord(tokens.root)} destroy`
     commands.push(paste, destroy)
     lines.push(
-      `${workload ? 2 : 1}. Revoke this instance's scoped Cloudflare tokens${workload ? " last: the destroy above uses them" : ""}. The first command waits, without echoing, for a Cloudflare token that can edit API tokens (the one you gave the installer, or a new one from the same form); the second destroys the scoped tokens through their own state:`,
+      `${workload ? 2 : 1}. Revoke this instance's scoped Cloudflare tokens${workload ? " last: the destroy above uses them" : ""}. The first command waits, without echoing, for a Cloudflare token that can edit API tokens (the one you gave azad, or a new one from the same form); the second destroys the scoped tokens through their own state:`,
       `     ${paste}`,
       `     ${destroy}`
     )
@@ -536,7 +529,7 @@ export async function resetInstance(
       `Run ${options.rerun ?? `azad --directory ${shellWord(directory)}`} to start over.`,
       ...(saved.AZAD_CLI_CLERK_APP_ID || saved.GITHUB_APP_ID
         ? [
-            "Nothing in your accounts changed. Delete the Clerk application and GitHub App the installer created in their dashboards if you no longer need them; a new Clerk production instance for the same hostname needs the old application deleted first.",
+            "Nothing in your accounts changed. Delete the Clerk application and GitHub App azad created in their dashboards if you no longer need them; a new Clerk production instance for the same hostname needs the old application deleted first.",
           ]
         : []),
     ].join("\n"),

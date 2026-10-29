@@ -4,7 +4,7 @@ import { CliError } from "../../error"
 import { configure, type Questions } from "./wizard"
 
 /**
- * Settings the first deploy fixes; `choice` is the installer choice that sets
+ * Settings the first deploy fixes; `choice` is the setup choice that sets
  * one. Changing any of them would replace the installation's infrastructure
  * or move its data: the target, the database and its connection, the cloud
  * project and region, the hostname and Cloudflare account, file storage, the

@@ -23,7 +23,7 @@ export const CLERK_NATIVE_REDIRECTS = [
   "http://127.0.0.1:45789/sso-callback",
   "pro.azad.board://callback",
 ]
-/** Sign-in by emailed code only; the emailed link strands desktop users (docs/auth-clerk-instance.md). */
+/** Sign-in by emailed code only: an emailed link opens in the browser and strands desktop app users. */
 export const CLERK_EMAIL_CONFIG = {
   auth_email: {
     used_for_sign_up: true,

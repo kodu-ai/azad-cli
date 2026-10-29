@@ -16,7 +16,7 @@ import {
   runCloudflareBootstrap,
   verifyCompletedBootstrap,
 } from "./cloudflare-bootstrap"
-import type { Run } from "./deploy"
+import type { Run } from "../../process"
 
 const roots: string[] = []
 afterEach(() => {

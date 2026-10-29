@@ -21,7 +21,7 @@ export function cloudflareBootstrapTokenUrl(webHost?: string): string {
   return `${CLOUDFLARE_TOKENS_URL}?permissionGroupKeys=${permissions}&accountId=%2A&zoneId=all&name=${name}`
 }
 
-// Provider pages the installer may open. Anything else is refused so that a
+// Provider pages azad may open. Anything else is refused so that a
 // credential-bearing or attacker-chosen URL can never reach the browser.
 const officialHosts = new Set([
   "console.cloud.google.com",

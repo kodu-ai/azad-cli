@@ -21,7 +21,7 @@ import {
   savedConfigurationReady,
 } from "./automation"
 import { readPrivateEnv, serializeEnv, upsertPrivateEnv } from "./config"
-import type { Run } from "./deploy"
+import type { Run } from "../../process"
 import type { TerraformSelection } from "./terraform"
 
 const roots: string[] = []

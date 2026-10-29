@@ -100,7 +100,7 @@ async function readClientFile(
  * Waits for the JSON that Google's "Download JSON" button saves after a Web
  * application client is created, in `directory` and modified at or after
  * `since`. The file is deleted once read: the secret then lives only in the
- * installer's private settings. Rejects only when `signal` aborts.
+ * instance's private settings. Rejects only when `signal` aborts.
  */
 export async function waitForGoogleClientFile(options: {
   directory: string
@@ -161,6 +161,8 @@ export async function checkGoogleClient(
         client_id: client.clientId,
         client_secret: client.clientSecret,
       }),
+      redirect: "error",
+      signal: AbortSignal.timeout(30_000),
     })
     const body = tokenErrorSchema.safeParse(await response.json())
     if (!body.success) return "unreachable"

@@ -889,9 +889,9 @@ const database = (value: string) => {
     if (url.searchParams.get("channel_binding") === "require")
       return "This deployment cannot enforce channel_binding=require across its PostgreSQL connections. The URL was not changed. Use a connection configuration supported by your security policy, or stop setup."
     if (url.searchParams.has("channel_binding"))
-      return "This installer backend does not support the channel_binding URL option. The URL was not changed."
+      return "azad does not support the channel_binding URL option. The URL was not changed."
     if (url.searchParams.size !== 1)
-      return "This installer supports only one sslmode URL option; other connection options are not supported."
+      return "azad supports only one sslmode URL option; other connection options are not supported."
     return undefined
   } catch {
     return "Enter a PostgreSQL connection URL with host, database, username, password and TLS."

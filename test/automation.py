@@ -27,7 +27,8 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
         assert not process.stderr, process.stderr
         return json.loads(process.stdout)
 
-    assert run("--non-interactive", "--unknown", "fixture-secret-bad-argument", success=False)["status"] == "failed"
+    assert run("--non-interactive", "--unknown", "fixture-secret-bad-argument", success=False) == {
+        "status": "failed", "message": "Unknown option. Run azad --help for usage."}
     schema = run("--schema")
     assert schema["providers"]["postgres"]["fields"]["GITHUB_APP_PRIVATE_KEY"]["secret"]
     assert not instance.exists()

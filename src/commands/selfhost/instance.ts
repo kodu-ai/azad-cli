@@ -71,6 +71,17 @@ export function instanceLocation(options: {
   }
 }
 
+/**
+ * A path or argument as one POSIX shell word, for commands printed to copy
+ * into a Linux or macOS shell: unchanged when it is plain, otherwise in
+ * single quotes.
+ */
+export function shellWord(value: string): string {
+  return /^[\w@%+=:,./-]+$/u.test(value)
+    ? value
+    : `'${value.replaceAll("'", "'\\''")}'`
+}
+
 /** The command that resumes this instance, for messages. */
 export function rerunCommand(
   location: Pick<InstanceLocation, "flags">,
