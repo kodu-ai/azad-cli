@@ -107,9 +107,9 @@ function release(
 test("the pinned release resolves to its GitHub asset and cache folder; --terraform-dir, then AZAD_TERRAFORM_DIR, override it", () => {
   expect(selectTerraform({ home: "/home/person", env: {} })).toEqual({
     kind: "release",
-    version: "0.0.1",
-    directory: "/home/person/.azad/cache/azad-terraform/0.0.1",
-    url: "https://github.com/kodu-ai/azad-terraform/releases/download/v0.0.1/azad-terraform-0.0.1.tar.gz",
+    version: "0.0.2",
+    directory: "/home/person/.azad/cache/azad-terraform/0.0.2",
+    url: "https://github.com/kodu-ai/azad-terraform/releases/download/v0.0.2/azad-terraform-0.0.2.tar.gz",
   })
   // The release this CLI deploys with is always pinned.
   expect(AZAD_TERRAFORM_SHA256[AZAD_TERRAFORM_VERSION]).toMatch(
