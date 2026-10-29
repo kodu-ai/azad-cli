@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { existsSync, readFileSync } from "node:fs"
 import {
   CLERK_EMAIL_CONFIG,
   CLERK_NATIVE_REDIRECTS,
@@ -38,8 +39,8 @@ function clerk(apps: App[], loggedIn = true) {
     if (!session) return { status: 1, stdout: "" }
     const method = args[args.indexOf("-X") + 1] ?? "GET"
     const path = args.at(-1) ?? ""
-    const data = args.includes("-d")
-      ? JSON.parse(args[args.indexOf("-d") + 1])
+    const data = args.includes("--file")
+      ? JSON.parse(readFileSync(args[args.indexOf("--file") + 1], "utf8"))
       : undefined
     requests.push(`${args.includes("-X") ? method : "GET"} ${path}`)
     if (data) bodies[`${method} ${path}`] = data
@@ -420,10 +421,13 @@ test("a refused step fails without exposing tokens, so the secret can be asked i
   await expect(failure).rejects.not.toThrow("sk_live")
 })
 
-test("social sign-in is turned on with the operator's own OAuth client, never echoing the secret", () => {
+test("social sign-in is turned on with the operator's own OAuth client, whose secret never reaches the command line", () => {
   const calls: string[][] = []
+  const bodies: unknown[] = []
   const cli: ClerkCli = (args) => {
     calls.push(args)
+    const file = args[args.indexOf("--file") + 1]
+    bodies.push(JSON.parse(readFileSync(file, "utf8")))
     return { status: 0, stdout: "{}" }
   }
   enableClerkSocialSignIn(
@@ -440,7 +444,10 @@ test("social sign-in is turned on with the operator's own OAuth client, never ec
   expect(args.at(-1)).toBe(
     "/v1/platform/applications/app_1/instances/ins_1/config"
   )
-  expect(JSON.parse(args[args.indexOf("-d") + 1])).toEqual({
+  expect(args.join(" ")).not.toContain("fixture-secret")
+  // The body file is gone once the call returns.
+  expect(existsSync(args[args.indexOf("--file") + 1])).toBe(false)
+  expect(bodies[0]).toEqual({
     connection_oauth_google: {
       enabled: true,
       authenticatable: true,

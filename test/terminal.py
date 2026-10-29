@@ -230,7 +230,7 @@ if args == ["auth", "login"]:
 if not data["login"]:
     sys.exit(1)
 method = args[args.index("-X") + 1] if "-X" in args else "GET"
-body = json.loads(args[args.index("-d") + 1]) if "-d" in args else None
+body = json.loads(pathlib.Path(args[args.index("--file") + 1]).read_text()) if "--file" in args else None
 path = args[-1]
 if path == "/v1/platform/applications":
     done(data["apps"])

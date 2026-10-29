@@ -1,4 +1,7 @@
 import { spawn, spawnSync } from "node:child_process"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { z } from "zod"
 import { apiBase } from "./api-base"
 import { commandEnvironment } from "../../command-environment"
@@ -98,7 +101,32 @@ const applicationSchema = z.object({
 })
 type Application = z.infer<typeof applicationSchema>
 
-/** Calls the Platform API through the logged-in CLI; output may contain secret keys and is never printed. */
+/**
+ * Runs `call` with the CLI arguments that send `body`: `--file` and a private
+ * temporary file (0600, in a 0700 directory) that is deleted afterwards. A
+ * body can hold a secret, such as an OAuth client secret, so it never goes on
+ * the command line, where other local processes can read it.
+ */
+function withBodyFile<T>(
+  body: JsonBody | undefined,
+  call: (bodyArgs: string[]) => T
+): T {
+  if (!body) return call([])
+  const directory = mkdtempSync(join(tmpdir(), "azad-clerk-"))
+  try {
+    const file = join(directory, "body.json")
+    writeFileSync(file, JSON.stringify(body), { mode: 0o600, flag: "wx" })
+    return call(["--file", file])
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+}
+
+/**
+ * Calls the Platform API through the logged-in CLI. The request body travels
+ * in a private file ({@link withBodyFile}); the output may contain secret
+ * keys and is never printed.
+ */
 function platform<T>(
   cli: ClerkCli,
   schema: z.ZodType<T>,
@@ -107,8 +135,9 @@ function platform<T>(
   body?: JsonBody
 ): T {
   const args = ["api", "--platform", "--mode", "agent", "--yes", "-X", method]
-  if (body) args.push("-d", JSON.stringify(body))
-  const result = cli([...args, path])
+  const result = withBodyFile(body, (bodyArgs) =>
+    cli([...args, ...bodyArgs, path])
+  )
   let json: unknown
   try {
     json = JSON.parse(result.stdout)
