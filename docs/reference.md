@@ -124,7 +124,9 @@ The Terraform roots, modules and drivers live in
 - **Download.** The first deploy (or `--create-tokens`, `--plan`, `--apply`)
   downloads `azad-terraform-<version>.tar.gz` and its `.sha256` file from
   `https://github.com/kodu-ai/azad-terraform/releases/download/v<version>/`,
-  checks the tarball's SHA-256, checks that it holds one
+  checks the tarball's SHA-256 against both that file and the digest this
+  `azad` pins (`AZAD_TERRAFORM_SHA256`; a version without a pin is never
+  downloaded), checks that it holds one
   `azad-terraform-<version>/` directory with the three drivers, extracts it to
   `~/.azad/cache/azad-terraform/<version>/` and runs
   `bun install --frozen-lockfile` there once. A marker file records a
@@ -334,8 +336,40 @@ separate private dotenv holding only `CLOUDFLARE_BOOTSTRAP_API_TOKEN`.
 `--apply` authorizes both the bootstrap and the workload apply; every plan it
 applies is made in the same run right before its apply, so a plan saved by an
 earlier run is never applied. The optional-settings switch `optionalSettings`
-guards `miniapps`, `optionalServices` and `advanced`; configs that set those
-keys without it keep working.
+guards `diskBackups`, `miniapps`, `managedSource`, `enableMeetings`,
+`storage`, `optionalServices` and `advanced`; a config that sets any of those
+keys without it turns the switch on.
+
+## Security
+
+- Secrets are typed into masked prompts or read from private dotenv files
+  (owned by you, readable only by you, not a link), and saved only in 0600
+  files inside the private (0700) instance directory. One exception is on
+  screen by
+  design: the Neon connection string is a visible field, so you can see and
+  edit the URL you paste, and changing settings shows it again.
+- Secrets are never command-line arguments. The drivers get file paths
+  (`--credentials`, `--bootstrap-file`), and Clerk API request bodies, such
+  as the Google OAuth client secret, go to the Clerk CLI in a temporary
+  0600 file.
+- Reports, errors and `--status` output name fields, never values, and
+  provider and parser errors are not echoed, since they may contain input
+  values. A mistyped option is not repeated either.
+- The Cloudflare token you paste is kept apart from the deployment settings
+  and used only to create narrowly scoped tokens.
+- The tools the wizard and deploy run get a minimal environment (`PATH`,
+  home and temp folders, proxies, CA bundles and Google credentials), with
+  telemetry off. Only `--reset`'s `terraform state list` of a remote token
+  backend gets your full environment, which holds that backend's
+  credentials.
+- `install.sh` downloads over HTTPS only and installs nothing unless the
+  executable matches the release's `SHA256SUMS`; the azad-terraform tarball
+  must match its release checksum and this `azad`'s pin.
+- Every Terraform apply is shown as a plan first and needs an explicit yes;
+  `--reset` never destroys anything itself.
+
+Keep the instance directory private and backed up: it holds credentials and
+Terraform state.
 
 ## Neon connection security
 

@@ -88,7 +88,7 @@ Ask only what you do not know yet:
    "$AZAD" --version && "$AZAD" --doctor
    ```
 
-   `AZAD_VERSION=0.0.1` (before `sh`) pins a release; `AZAD_INSTALL_DIR`
+   `AZAD_VERSION=0.0.2` (before `sh`) pins a release; `AZAD_INSTALL_DIR`
    chooses another directory. The deploy needs a Linux shell: on Windows, do
    everything in WSL (Ubuntu), with the checkout in WSL's own file system.
    Tell the person the full path; they run it in their own terminal.
@@ -214,8 +214,8 @@ The deploy first shows a token preview and asks to create the scoped
 Cloudflare tokens (and the RealtimeKit app). That creates credentials only.
 
 **Cloudflare.** The wizard runs `cloudflare.ts setup`, prints the Terraform
-plan and asks "Apply this plan to your selected customer accounts?" (default
-No). Review it together; you can print it again with
+plan and asks "Apply this plan to your Cloudflare account?" (with Cloud SQL,
+"… and Google Cloud project <project>?"; default No). Review it together; you can print it again with
 `bun --no-env-file "$TF/scripts/cloudflare.ts" show --root <root> --instance-dir ~/.azad/instances/default -no-color terraform.tfplan`,
 where `<root>` is `postgres` (Neon or other PostgreSQL) or `cloudsql` (Cloud
 SQL). The person answers Yes only after that; the wizard applies exactly that
@@ -446,7 +446,7 @@ deleted first.
 - Projects cannot be created on Cloudflare: managed source (Cloudflare
   Artifacts) is off. Choose it during setup; adding it later needs its tokens in
   the private settings and a reviewed redeploy (see "Managed project source" in
-  `docs/self-hosting.md`).
+  `docs/self-hosting.md` of the Azad source).
 - Image uploads have no blurred preview on Google Cloud: expected there; the API
   logs `encoder_unbound`.
 - A stale `.azad/self-host/installer.lock` in the Azad source checkout: remove it only after
