@@ -1,6 +1,6 @@
 {
   "name": "@azad-ai/cli",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "The azad command line: set up and run a self-hosted Azad",
   "type": "module",
