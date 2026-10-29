@@ -1,9 +1,6 @@
 import { z } from "zod"
-import type {
-  Fetcher,
-  RealtimeKitReceipt,
-  RealtimeKitStore,
-} from "./realtimekit"
+import type { Fetcher } from "../../http"
+import type { RealtimeKitReceipt, RealtimeKitStore } from "./realtimekit"
 
 /**
  * A stand-in for the Cloudflare endpoints RealtimeKit setup calls, keeping

@@ -10,6 +10,7 @@ import { setTimeout as delay } from "node:timers/promises"
 import { z } from "zod"
 import { apiBase } from "./api-base"
 import { CliError } from "../../error"
+import type { Fetcher } from "../../http"
 
 const ownerPattern = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/u
 
@@ -99,7 +100,7 @@ export type GithubAppCredentials = {
  */
 export async function convertManifestCode(
   code: string,
-  fetcher: typeof fetch = fetch
+  fetcher: Fetcher = fetch
 ): Promise<GithubAppCredentials> {
   if (!/^[A-Za-z0-9_-]{1,200}$/u.test(code))
     throw new CliError("GitHub returned an invalid registration code.")
@@ -178,7 +179,7 @@ export async function createGithubApp(options: {
   owner?: string
   open: (url: string) => Promise<void>
   signal?: AbortSignal
-  fetcher?: typeof fetch
+  fetcher?: Fetcher
 }): Promise<GithubAppCredentials> {
   const state = randomBytes(16).toString("hex")
   const owner = options.owner?.trim()
@@ -292,7 +293,7 @@ type InstallationQuery = {
   appId: string
   privateKey: string
   signal?: AbortSignal
-  fetcher?: typeof fetch
+  fetcher?: Fetcher
 }
 
 /**

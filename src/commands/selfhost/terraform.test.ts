@@ -12,6 +12,7 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { Fetcher } from "../../http"
 import { run, type Run } from "../../process"
 import {
   checksumFor,
@@ -63,9 +64,9 @@ function release(
     env: { ...process.env, COPYFILE_DISABLE: "1" },
   })
   expect(packed.status).toBe(0)
-  const bytes = readFileSync(archive)
+  const bytes = new Uint8Array(readFileSync(archive))
   const digest = createHash("sha256").update(bytes).digest("hex")
-  const files = new Map<string, Uint8Array | string>([
+  const files = new Map<string, Uint8Array<ArrayBuffer> | string>([
     [URL, bytes],
     [
       `${URL}.sha256`,
@@ -74,14 +75,13 @@ function release(
     ],
   ])
   const requests: string[] = []
-  const fetcher = (async (input: string | URL | Request) => {
-    const url = String(input)
+  const fetcher: Fetcher = async (url) => {
     requests.push(url)
     const body = files.get(url)
     return body === undefined
       ? new Response("Not Found", { status: 404 })
       : new Response(body)
-  }) as typeof fetch
+  }
   const installs: string[] = []
   const execute: Run = (command, args, cwd, capture) => {
     if (command === "bun") {
@@ -186,9 +186,9 @@ test("a release whose published checksum differs from this CLI's pin installs no
 
 test("offline and unpublished releases fail with what to do, and nothing is installed", async () => {
   const f = release()
-  const offline = (async () => {
+  const offline: Fetcher = async () => {
     throw new TypeError("fetch failed")
-  }) as unknown as typeof fetch
+  }
   await expect(
     prepareTerraform(f.selection, { execute: f.execute, fetcher: offline })
   ).rejects.toThrow(
@@ -250,9 +250,9 @@ test("a local checkout must have the three drivers, and gets its dependencies in
   mkdirSync(join(root, "scripts"))
   for (const driver of ["cloudflare", "gcp", "bootstrap"])
     writeFileSync(join(root, "scripts", `${driver}.ts`), "")
-  const fetcher = (() => {
+  const fetcher: Fetcher = () => {
     throw new Error("A local checkout is never downloaded")
-  }) as unknown as typeof fetch
+  }
   expect(await prepareTerraform(local, { execute, fetcher })).toBe(root)
   expect(installs).toEqual([
     `bun --no-env-file install --frozen-lockfile in ${root}`,

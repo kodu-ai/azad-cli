@@ -10,6 +10,7 @@ import {
   writePrivateText,
 } from "./config"
 import { CliError } from "../../error"
+import type { Fetcher } from "../../http"
 
 /**
  * Cloudflare RealtimeKit for a self-hosted Azad: one app per installation and
@@ -105,9 +106,6 @@ function webhookUrl(webHost: string): string {
 }
 
 type Init = { method?: string; body?: object }
-
-/** The part of `fetch` setup uses; tests pass a stand-in. */
-export type Fetcher = (url: string, init: RequestInit) => Promise<Response>
 
 async function send(
   fetcher: Fetcher,

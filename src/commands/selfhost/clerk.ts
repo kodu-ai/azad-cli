@@ -4,6 +4,7 @@ import { apiBase } from "./api-base"
 import { commandEnvironment } from "../../command-environment"
 import { CliError } from "../../error"
 import { spawnToolSync } from "../../process"
+import type { Fetcher } from "../../http"
 
 /** Pinned official Clerk CLI. Its browser login is the public route to Clerk's Platform API. */
 export const CLERK_CLI_PACKAGE = "clerk@4.0.0"
@@ -188,7 +189,7 @@ async function selectApplication(
 /** Merges allowed origins through the Backend API ({@link apiBase}("clerk")) with the instance secret key. */
 async function allowOfficialOrigins(
   secretKey: string,
-  fetcher: typeof fetch
+  fetcher: Fetcher
 ): Promise<void> {
   const base = apiBase("clerk")
   const request = async (method: string, body?: JsonBody) => {
@@ -230,7 +231,7 @@ async function allowOfficialOrigins(
  */
 async function recordProtectWithoutBlocking(
   secretKey: string,
-  fetcher: typeof fetch
+  fetcher: Fetcher
 ): Promise<void> {
   let response: Response
   try {
@@ -278,7 +279,7 @@ export async function provisionClerk(options: {
   /** Called once the application is chosen and unattended configuration starts. */
   onConfigure?: () => void
   cli?: ClerkCli
-  fetcher?: typeof fetch
+  fetcher?: Fetcher
 }): Promise<ClerkSetup> {
   const cli = options.cli ?? clerkCli
   ensureClerkLogin(cli)
@@ -573,7 +574,7 @@ function svixPortalAccess(link: string) {
 export async function ensureClerkWebhook(
   secretKey: string,
   url: string,
-  fetcher: typeof fetch = fetch
+  fetcher: Fetcher = fetch
 ): Promise<string> {
   const fail: (step: string) => never = (step) => {
     throw new CliError(`Clerk webhook setup stopped at ${step}.`)
@@ -659,7 +660,7 @@ export async function ensureClerkWebhook(
 export async function waitForClerk(
   frontendApi: string,
   options: {
-    fetcher?: typeof fetch
+    fetcher?: Fetcher
     timeoutMs?: number
     intervalMs?: number
   } = {}

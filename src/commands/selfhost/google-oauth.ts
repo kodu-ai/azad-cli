@@ -5,6 +5,7 @@ import { isAbsolute, join } from "node:path"
 import { setTimeout as delay } from "node:timers/promises"
 import { z } from "zod"
 import { apiBase } from "./api-base"
+import type { Fetcher } from "../../http"
 
 /** A Google OAuth client's credentials, as Clerk's Google connection takes them. */
 export type GoogleClient = { clientId: string; clientSecret: string }
@@ -147,7 +148,7 @@ const tokenErrorSchema = z.object({
 export async function checkGoogleClient(
   client: GoogleClient,
   redirectUri: string,
-  fetcher: typeof fetch = fetch
+  fetcher: Fetcher = fetch
 ): Promise<GoogleClientCheck> {
   try {
     const response = await fetcher(apiBase("googleOauthToken"), {
@@ -181,7 +182,7 @@ export async function waitForGoogleClient(
     signal?: AbortSignal
     timeoutMs?: number
     intervalMs?: number
-    fetcher?: typeof fetch
+    fetcher?: Fetcher
   } = {}
 ): Promise<GoogleClientCheck> {
   const deadline = Date.now() + (options.timeoutMs ?? 180_000)

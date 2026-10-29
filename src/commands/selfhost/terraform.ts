@@ -11,6 +11,7 @@ import { dirname, join, resolve } from "node:path"
 import { CliError } from "../../error"
 import type { Run } from "../../process"
 import { localPath } from "./instance"
+import type { Fetcher } from "../../http"
 
 /**
  * The azad-terraform release this CLI deploys with: its Terraform roots and
@@ -131,7 +132,7 @@ export function terraformReady(selection: TerraformSelection): boolean {
 async function download(
   url: string,
   version: string,
-  fetcher: typeof fetch
+  fetcher: Fetcher
 ): Promise<Uint8Array> {
   const unreachable = `Could not download azad-terraform ${version} from ${url}. Check your internet connection and proxy settings, then retry. To deploy offline, point --terraform-dir at a local azad-terraform checkout.`
   let response: Response
@@ -194,7 +195,7 @@ export async function prepareTerraform(
   selection: TerraformSelection,
   options: {
     execute: Run
-    fetcher?: typeof fetch
+    fetcher?: Fetcher
     note?: (message: string) => void
     /** Pinned release digests; defaults to {@link AZAD_TERRAFORM_SHA256}. */
     pins?: Readonly<Record<string, string>>

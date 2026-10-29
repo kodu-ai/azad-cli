@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { apiBase } from "./api-base"
 import { CliError } from "../../error"
+import type { Fetcher } from "../../http"
 
 const id = z.string().regex(/^[a-f0-9]{32}$/u)
 const zoneScope = "com.cloudflare.api.account.zone"
@@ -28,7 +29,7 @@ export type CloudflareZone = {
 }
 
 async function call<T>(
-  fetcher: typeof fetch,
+  fetcher: Fetcher,
   token: string,
   path: string,
   schema: z.ZodType<T>,
@@ -75,7 +76,7 @@ async function call<T>(
 export async function findCloudflareZone(
   bootstrapToken: string,
   hostname: string,
-  fetcher: typeof fetch = fetch,
+  fetcher: Fetcher = fetch,
   now: () => number = Date.now
 ): Promise<CloudflareZone> {
   const groups = await call(

@@ -36,6 +36,7 @@ import {
   type TerraformSelection,
 } from "./terraform"
 import type { Questions } from "./wizard"
+import type { Fetcher } from "../../http"
 
 export { run, type Run } from "../../process"
 
@@ -132,7 +133,7 @@ export async function deployInstance(
     bootstrapOnly?: boolean
     /** False skips waiting for Clerk's certificate after apply. */
     waitForClerk?: boolean
-    fetcher?: typeof fetch
+    fetcher?: Fetcher
   } = {}
 ): Promise<
   | "missing_prerequisites"
@@ -417,7 +418,7 @@ async function setUpMeetings(
   config: LocalConfig,
   questions: Questions,
   confirmed: boolean,
-  fetcher?: typeof fetch
+  fetcher?: Fetcher
 ): Promise<void> {
   const values = config.read()
   if (
@@ -547,7 +548,7 @@ function clerkDnsChecks(
 async function clerkReady(
   values: Record<string, string>,
   questions: Questions,
-  fetcher?: typeof fetch
+  fetcher?: Fetcher
 ): Promise<void> {
   const clerk = clerkFrontendApi(values.CLERK_PUBLISHABLE_KEY ?? "")
   if (!clerk) return
@@ -607,7 +608,7 @@ async function deployGoogleCloud(
   checkout: { cwd: string; terraform: string; files: string; revision: string },
   questions: Questions,
   execute: Run,
-  options: { waitForClerk?: boolean; fetcher?: typeof fetch }
+  options: { waitForClerk?: boolean; fetcher?: Fetcher }
 ): Promise<"planned" | "applied"> {
   const values = config.read()
   const { cwd, terraform, files, revision } = checkout

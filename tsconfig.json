@@ -9,6 +9,6 @@
     "noEmit": true,
     "types": ["bun", "node"]
   },
-  "include": ["src/**/*.ts", "build.ts"],
-  "exclude": ["**/*.test.ts", "node_modules", "dist"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "build.ts"],
+  "exclude": ["node_modules", "dist"]
 }

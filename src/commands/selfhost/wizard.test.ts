@@ -233,7 +233,10 @@ test("automatic provider steps replace their manual fields, including the Clerk 
       } as Record<string, string>
     )[key ?? ""] ?? "postgres"
   const steps: string[] = []
-  f.questions.provision = async (step, values) => {
+  f.questions.provision = async (
+    step,
+    values
+  ): Promise<Record<string, string> | undefined> => {
     steps.push(step)
     if (step === "cloudflareAccount") {
       expect(values.AZAD_CLI_WEB_HOST).toBe("board.example.com")
@@ -626,12 +629,13 @@ test("missing tools stop the wizard before its second question, with the target 
 test("Sign in with Google is an opt-in that defaults to No unless it was turned on before", async () => {
   const offered: (boolean | undefined)[] = []
   const steps: string[] = []
-  for (const saved of [
+  const saves: Record<string, string>[] = [
     {},
     { AZAD_CLI_GOOGLE_SIGN_IN: "enabled" },
     { AZAD_CLI_GOOGLE_CLIENT_ID: "1-a.apps.googleusercontent.com" },
     { AZAD_CLI_GOOGLE_SIGN_IN: "disabled" },
-  ]) {
+  ]
+  for (const saved of saves) {
     const f = fixture("postgres")
     f.config.save(saved)
     f.questions.provision = async (step) => {
