@@ -238,8 +238,8 @@ the `A` records. Existing DNS records are never changed.
 
 **Both.** During the apply the wizard asks Clerk to recheck its DNS every two
 minutes, then waits until sign-in works and prints the URL. With Mini Apps on,
-every deploy also publishes Azad's official Mini Apps (Code Review, PartyTask,
-Release Queue, Remote iOS Simulator) to the marketplace, one line per app. The
+every deploy also publishes Azad's official Mini Apps (PartyTask, Release Queue,
+Remote iOS Simulator) to the marketplace, one line per app. The
 Google Cloud deploy log is
 `~/.azad/instances/default/terraform/gcp-celld/celld-install/install.log`.
 
@@ -294,9 +294,9 @@ installation at once.
    The deploy reads that `.env` on both targets. It prints names and ids only,
    and a rerun changes nothing already in place.
 7. **Official Mini Apps.** PartyTask and Release Queue need an agent machine;
-   Code Review needs the GitHub App and a granted repository; Remote iOS
-   Simulator needs a paired Apple Silicon Mac. If an app failed to publish, run
-   exactly the retry command the deploy printed, in the Azad source checkout
+   Remote iOS Simulator needs a paired Apple Silicon Mac. If an app failed to
+   publish, run exactly the retry command the deploy printed, in the Azad
+   source checkout
    (`bun scripts/self-host/official-apps.ts --api-origin … --state-directory …`).
 8. **Native push** for the mobile apps needs a short-lived azad.pro session
    token that only the person handles, in their terminal; follow "Native push"

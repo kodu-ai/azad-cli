@@ -220,8 +220,8 @@ derives; edit that copy from then on. For Cloud SQL, use
 - **Desktop and mobile apps:** turn on **Native API** in Clerk's dashboard, on
   the Native applications page. `azad` prints the exact link. Clerk has no
   API for this setting.
-- **Official Mini Apps:** every deploy lists Code Review, PartyTask, Release
-  Queue and Remote iOS Simulator in your marketplace as Azad's apps (see
+- **Official Mini Apps:** every deploy lists PartyTask, Release Queue and
+  Remote iOS Simulator in your marketplace as Azad's apps (see
   "Official Mini Apps" in `docs/self-hosting.md` of the Azad source). If one
   fails, the deploy names the command that retries only that step.
 - **Back up** the instance directory. Updates need it.
