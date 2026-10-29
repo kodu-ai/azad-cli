@@ -28,12 +28,13 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true })
 })
 
-const VERSION = "0.0.1"
+// A version with no pinned digest, so the fake tarballs below are accepted.
+const VERSION = "0.0.0-test"
 const URL = `https://github.com/kodu-ai/azad-terraform/releases/download/v${VERSION}/azad-terraform-${VERSION}.tar.gz`
 
 /**
  * A local stand-in for an azad-terraform release: a tarball of `tops`
- * (default the single `azad-terraform-0.0.1/` with its drivers) and its
+ * (default the single `azad-terraform-<version>/` with its drivers) and its
  * sha256sum file, served by a fetcher that records each URL. `bun install`
  * is recorded and answered with `installStatus`; tar runs for real.
  */
@@ -101,9 +102,9 @@ function release(
 test("the pinned release resolves to its GitHub asset and cache folder; --terraform-dir, then AZAD_TERRAFORM_DIR, override it", () => {
   expect(selectTerraform({ home: "/home/person", env: {} })).toEqual({
     kind: "release",
-    version: VERSION,
+    version: "0.0.1",
     directory: "/home/person/.azad/cache/azad-terraform/0.0.1",
-    url: URL,
+    url: "https://github.com/kodu-ai/azad-terraform/releases/download/v0.0.1/azad-terraform-0.0.1.tar.gz",
   })
   expect(
     selectTerraform({
@@ -138,7 +139,7 @@ test("a release is downloaded, verified, extracted into the cache and installed 
     `${directory}: --no-env-file install --frozen-lockfile`,
   ])
   expect(terraformReady(f.selection)).toBe(true)
-  expect(notes[0]).toBe("Downloading azad-terraform 0.0.1…")
+  expect(notes[0]).toBe("Downloading azad-terraform 0.0.0-test…")
   // Only the version's folder remains in the cache: no scratch download.
   expect(readdirSync(join(directory, ".."))).toEqual([VERSION])
 
@@ -155,7 +156,7 @@ test("a download that does not match its published checksum installs nothing", a
   await expect(
     prepareTerraform(f.selection, { execute: f.execute, fetcher: f.fetcher })
   ).rejects.toThrow(
-    "The azad-terraform 0.0.1 download does not match its published SHA-256 checksum. Nothing was installed; retry the download."
+    "The azad-terraform 0.0.0-test download does not match its published SHA-256 checksum. Nothing was installed; retry the download."
   )
   expect(existsSync(f.selection.directory)).toBe(false)
   expect(f.installs).toEqual([])
@@ -166,8 +167,21 @@ test("a download that does not match its published checksum installs nothing", a
       execute: unlisted.execute,
       fetcher: unlisted.fetcher,
     })
-  ).rejects.toThrow("does not list azad-terraform-0.0.1.tar.gz")
+  ).rejects.toThrow("does not list azad-terraform-0.0.0-test.tar.gz")
   expect(unlisted.requests).toEqual([`${URL}.sha256`])
+})
+
+test("a release whose published checksum differs from this CLI's pin installs nothing", async () => {
+  const f = release()
+  await expect(
+    prepareTerraform(f.selection, {
+      execute: f.execute,
+      fetcher: f.fetcher,
+      pins: { [VERSION]: "0".repeat(64) },
+    })
+  ).rejects.toThrow("does not match the one this CLI pins")
+  expect(f.requests.some((url) => url === URL)).toBe(false)
+  expect(f.installs).toEqual([])
 })
 
 test("offline and unpublished releases fail with what to do, and nothing is installed", async () => {
@@ -178,13 +192,13 @@ test("offline and unpublished releases fail with what to do, and nothing is inst
   await expect(
     prepareTerraform(f.selection, { execute: f.execute, fetcher: offline })
   ).rejects.toThrow(
-    `Could not download azad-terraform 0.0.1 from ${URL}.sha256. Check your internet connection and proxy settings, then retry. To deploy offline, point --terraform-dir at a local azad-terraform checkout.`
+    `Could not download azad-terraform 0.0.0-test from ${URL}.sha256. Check your internet connection and proxy settings, then retry. To deploy offline, point --terraform-dir at a local azad-terraform checkout.`
   )
   f.files.clear()
   await expect(
     prepareTerraform(f.selection, { execute: f.execute, fetcher: f.fetcher })
   ).rejects.toThrow(
-    "azad-terraform 0.0.1, which this azad release deploys with, is not published at"
+    "azad-terraform 0.0.0-test, which this azad release deploys with, is not published at"
   )
   expect(existsSync(f.selection.directory)).toBe(false)
 })
@@ -209,7 +223,7 @@ test("a failed dependency install leaves no ready release, and the next run star
   const f = release({ installStatus: 1 })
   await expect(
     prepareTerraform(f.selection, { execute: f.execute, fetcher: f.fetcher })
-  ).rejects.toThrow("Installing the dependencies of azad-terraform 0.0.1")
+  ).rejects.toThrow("Installing the dependencies of azad-terraform 0.0.0-test")
   expect(terraformReady(f.selection)).toBe(false)
   const retry = release()
   retry.selection.directory = f.selection.directory

@@ -19,6 +19,16 @@ import { localPath } from "./instance"
  */
 export const AZAD_TERRAFORM_VERSION = "0.0.1"
 
+/**
+ * The SHA-256 of each azad-terraform release tarball this CLI trusts, pinned
+ * when the release is adopted. The download must match both the release's
+ * own checksum file and this pin, so an asset replaced after publication is
+ * refused even when its checksum file was replaced with it.
+ */
+export const AZAD_TERRAFORM_SHA256: Readonly<Record<string, string>> = {
+  "0.0.1": "b997103ecb48fd97f39e4484254645efe8d08f37584826ea10b5861cc54566d4",
+}
+
 /** The GitHub repository that publishes azad-terraform releases. */
 export const AZAD_TERRAFORM_REPOSITORY = "kodu-ai/azad-terraform"
 
@@ -177,7 +187,7 @@ function memberInside(name: string, top: string): boolean {
  * completed preparation; an interrupted one is redone from the download.
  *
  * @throws CliError when the download fails (offline, unpublished), the
- * checksum does not match, the archive is malformed, or the dependency
+ * checksum does not match the release's checksum file or this CLI's pin, the archive is malformed, or the dependency
  * install fails. Nothing partial is ever used.
  */
 export async function prepareTerraform(
@@ -186,6 +196,8 @@ export async function prepareTerraform(
     execute: Run
     fetcher?: typeof fetch
     note?: (message: string) => void
+    /** Pinned release digests; defaults to {@link AZAD_TERRAFORM_SHA256}. */
+    pins?: Readonly<Record<string, string>>
   }
 ): Promise<string> {
   const { execute } = options
@@ -221,6 +233,11 @@ export async function prepareTerraform(
   if (!expected)
     throw new CliError(
       `The checksum file of azad-terraform ${version} (${url}.sha256) does not list ${name}. Nothing was installed.`
+    )
+  const pinned = (options.pins ?? AZAD_TERRAFORM_SHA256)[version]
+  if (pinned && expected !== pinned)
+    throw new CliError(
+      `The checksum published for azad-terraform ${version} does not match the one this CLI pins. Nothing was installed; report this to the Azad maintainers.`
     )
   const archive = await download(url, version, fetcher)
   if (createHash("sha256").update(archive).digest("hex") !== expected)
