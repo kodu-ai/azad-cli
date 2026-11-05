@@ -18,7 +18,7 @@ That grabs the right build from the
 [latest release](https://github.com/kodu-ai/azad-cli/releases/latest), checks
 it against the release's `SHA256SUMS` and puts it at `~/.local/bin/azad`. If
 anything fails, nothing is installed. To pin a version or pick another folder,
-set `AZAD_VERSION=0.3.1` or `AZAD_INSTALL_DIR=/some/dir` on the `sh` side of
+set `AZAD_VERSION=0.4.0` or `AZAD_INSTALL_DIR=/some/dir` on the `sh` side of
 the pipe.
 
 Rather do it by hand? Download your build (`azad-linux-x64`,
@@ -133,6 +133,11 @@ deploy runs, automation and reset.
   Cloudflare, GCS on Google Cloud) with Terraform's state and the app's
   receipts, and a secret store (Cloudflare Secrets Store, Google Secret
   Manager) with its keys. The deploy creates them.
+- To keep Terraform's state in a backend of your own instead (your own S3
+  bucket, HCP Terraform and others), add a `backend_override.tf` beside the
+  instance's Terraform variables. The
+  [azad-terraform README](https://github.com/kodu-ai/azad-terraform#your-own-terraform-backend)
+  explains it; nothing in setup changes.
 - `~/.azad/instances/<name>/` holds your answers and secrets (`.env`), the
   Cloudflare tokens, and `terraform/` with the variables and a cache of the
   keys. Without `--instance` the name is `default`. It's private (0700, files
