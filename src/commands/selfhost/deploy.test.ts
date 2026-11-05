@@ -15,6 +15,7 @@ import { LocalConfig, serializeEnv, upsertPrivateEnv } from "./config"
 import { saveBootstrapToken } from "./bootstrap-credentials"
 import type { Run } from "../../process"
 import {
+  backupKeys,
   deployInstance,
   instanceTerraformDirectory,
   type DeploySources,
@@ -523,6 +524,8 @@ test("Google Cloud: setup writes the variables, then each plan is shown and appl
     "apply -input=false terraform.tfplan",
     "plan -input=false -out=terraform.tfplan",
     "apply -input=false terraform.tfplan",
+    // Terraform changes infrastructure only; the app is deployed after it.
+    "deploy",
   ])
   // Two plans, each confirmed separately, defaulting to No.
   expect(asked.map((question) => question.initial)).toEqual([false, false])
@@ -548,7 +551,9 @@ test("Google Cloud: setup writes the variables, then each plan is shown and appl
   expect(JSON.stringify(f.calls)).not.toContain("fixture-secret")
   expect(f.config.read().AZAD_CLI_SOURCE_REVISION).toBe(revision)
   expect(f.notes.at(-1)).toContain("https://board.example.com")
-  expect(f.notes.at(-1)).toContain(`Back up ${f.config.directory}`)
+  expect(f.notes.at(-1)).toContain(
+    `azad --backup-keys DIR --directory ${f.config.directory}`
+  )
 })
 
 test("Google Cloud: declining the first plan applies nothing, and the next run plans the same step again", async () => {
@@ -604,7 +609,7 @@ test("the GitHub App is installed only once Azad is live, so GitHub's webhook an
     { waitForClerk: false }
   )
   expect(applied).toBe("applied")
-  expect(steps).toEqual(["githubInstall after apply"])
+  expect(steps).toEqual(["githubInstall after deploy"])
 
   // Without a terminal, the install page is named instead.
   const automated = googleCloudFixture()
@@ -742,6 +747,7 @@ test("Cloudflare drivers run from azad-terraform with the root name, and --sourc
       "init",
       "plan",
       "apply",
+      "deploy",
     ])
     for (const call of workload) {
       expect(call.args.slice(-2)).toEqual([
@@ -765,7 +771,7 @@ test("Cloudflare drivers run from azad-terraform with the root name, and --sourc
   }
 })
 
-test("Google Cloud drivers take no --root, and --source only for setup, plan and apply", async () => {
+test("Google Cloud drivers take no --root, and --source only for setup, plan, apply and deploy", async () => {
   const f = googleCloudFixture()
   await deployInstance(f.config, f.sources, f.questions, f.execute, {
     waitForClerk: false,
@@ -774,7 +780,7 @@ test("Google Cloud drivers take no --root, and --source only for setup, plan and
   for (const call of helper) {
     expect(call.args).not.toContain("--root")
     expect(call.args.includes("--source")).toBe(
-      ["setup", "plan", "apply"].includes(call.args[2])
+      ["setup", "plan", "apply", "deploy"].includes(call.args[2])
     )
   }
   expect(f.notes.at(-1)).not.toContain("agent_machine")
@@ -827,4 +833,33 @@ test("a --source that is not a Git checkout stops before azad-terraform is prepa
     )
   ).rejects.toThrow("must be a Git checkout")
   expect(f.operations).toEqual([])
+})
+
+test("--backup-keys runs the drivers' backup-keys with the deployed source, and only for a deployed instance", async () => {
+  const f = fixture("postgres")
+  const out = join(f.config.directory, "..", "keys")
+  await expect(
+    backupKeys(f.config.directory, f.config.read(), f.sources, out, f.execute)
+  ).rejects.toThrow("has not been deployed yet")
+  const calls: string[][] = []
+  const execute: Run = (command, args) => {
+    calls.push([command, ...args])
+    return { status: 0, stdout: "" }
+  }
+  const deployed = { ...f.config.read(), AZAD_CLI_SOURCE_REVISION: revision }
+  expect(
+    await backupKeys(f.config.directory, deployed, f.sources, out, execute)
+  ).toBe(out)
+  const driver = calls.find((call) => call.includes("backup-keys"))
+  expect(driver?.slice(3)).toEqual([
+    "backup-keys",
+    "--out",
+    out,
+    "--root",
+    "postgres",
+    "--source",
+    f.sources.source,
+    "--instance-dir",
+    f.config.directory,
+  ])
 })

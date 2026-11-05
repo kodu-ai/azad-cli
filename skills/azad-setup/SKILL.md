@@ -28,7 +28,7 @@ a step here is not enough.
   file they own (mode 0600); you pass only file paths. Never open, `cat`,
   `source` or upload: the instance directory's `.env`,
   `.cloudflare-bootstrap-credential/` and `.realtimekit.json`; under its
-  `terraform/<root>/`, `terraform.tfstate` (and its backups),
+  `terraform/<root>/`, `terraform.tfstate*` (an azad 0.0.x state),
   `celld-install/` (except its `install.log`) and `installer-state/`;
   `show -json` of a plan; or `output -raw agent_machine_private_key`. If a
   secret shows up in
@@ -43,6 +43,8 @@ a step here is not enough.
   `azad --reset` (section 7), and only when the person asks to start over.
 - **Destructive commands only on request.** `destroy`, `-replace`, deleting the
   Clerk or GitHub App, revoking tokens: only when the person asks, after the plan.
+  `--take-over` and the drivers' `force-unlock` only after the person confirms
+  the other run has stopped.
 - **The person drives interactive prompts.** Do not feed the wizard keystrokes
   or run it through a pseudo-terminal. It needs their terminal and browser.
 - **Report what is true.** Distinguish configured, planned, applied, serving
@@ -301,10 +303,10 @@ installation at once.
 8. **Native push** for the mobile apps needs a short-lived azad.pro session
    token that only the person handles, in their terminal; follow "Native push"
    in the target's guide. Never ask for the token. Web push works without it.
-9. **Back up** the instance directory. It holds the Terraform state and, in
-   `terraform/gcp-celld/celld-install/` (Google Cloud), the instance's signing
-   and encryption keys, or `terraform/<root>/installer-state/` (Cloudflare).
-   Updates need it.
+9. **Offline key copy.** Terraform's state and the keys live in the
+   installation's own cloud (its bucket and secret store). Ask the person to
+   run `azad --backup-keys <new folder>` in their terminal and keep that
+   folder offline; never open it yourself.
 
 ## 7. Change settings, update, redeploy or start over
 
@@ -334,33 +336,32 @@ Google Cloud:
 
 ```sh
 bun --no-env-file "$TF/scripts/gcp.ts" refresh --source ~/azad-source --instance-dir ~/.azad/instances/default   # records the new revision
-bun --no-env-file "$TF/scripts/gcp.ts" init --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/gcp.ts" plan --source ~/azad-source --instance-dir ~/.azad/instances/default -out=update.tfplan
-bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-dir ~/.azad/instances/default update.tfplan   # after review
+bun --no-env-file "$TF/scripts/gcp.ts" deploy --source ~/azad-source --instance-dir ~/.azad/instances/default
 ```
 
 Cloudflare (`<root>` as in section 5):
 
 ```sh
 bun --no-env-file "$TF/scripts/cloudflare.ts" refresh --root <root> --source ~/azad-source --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/cloudflare.ts" init --root <root> --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/cloudflare.ts" plan --root <root> --source ~/azad-source --instance-dir ~/.azad/instances/default -out=update.tfplan
-bun --no-env-file "$TF/scripts/cloudflare.ts" apply --root <root> --source ~/azad-source --instance-dir ~/.azad/instances/default update.tfplan   # after review
+bun --no-env-file "$TF/scripts/cloudflare.ts" deploy --root <root> --source ~/azad-source --instance-dir ~/.azad/instances/default
 ```
+
+Terraform never deploys the app: plan and apply only change infrastructure
+(run `init` first after moving to a newer azad-terraform), and `deploy`
+installs the recorded revision. A deploy refuses a checkout older than the
+revision the installation runs.
 
 Plan names are files in `~/.azad/instances/default/terraform/<root name>/`
 (`gcp-celld`, `postgres` or `cloudsql`). Read-only driver commands (`init`,
-`show`, `output`, `state`, `phase`) take no `--source`.
+`show`, `output`, `state list`, `phase`) take no `--source`.
 
 **Update the CLI** by rerunning the install command from section 2. A newer
 `azad` may pin a newer azad-terraform; its next deploy downloads it, and
 `--doctor` prints the new `$TF`.
 
 The deploy waits until the API serves the new revision. To redeploy the same
-revision (for example after the person changed a private setting), add
-`-replace='module.app[0].terraform_data.deploy'` (Google Cloud) or
-`-replace='module.base.module.installation.terraform_data.install[0]'`
-(Cloudflare) to the plan. Non-secret infrastructure settings (`disk_backups`,
+revision (for example after the person changed a private setting), run
+`deploy` again. Non-secret infrastructure settings (`disk_backups`,
 `agent_machine`, `deletion_protection`, `ssh_allowed_private_cidrs`,
 `proxy_only_subnet_range`) live in the instance's
 `terraform/<root name>/terraform.tfvars.json`: edit, plan, review, apply. A Google Cloud installation made before the regional load

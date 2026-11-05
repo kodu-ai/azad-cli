@@ -93,6 +93,11 @@ The commands you'll actually use:
   `--directory PATH` for any other folder.
 - `azad --doctor`: list missing or too-old tools for the saved target, and
   which azad-terraform a deploy will use.
+- `azad --backup-keys ~/azad-keys`: write an offline copy of the
+  installation's keys to a new folder. Keep it off the cloud.
+- `azad --take-over ID`: let a deploy take over the operation a stopped run
+  left on another machine, once you have confirmed it is gone (the refusal
+  names the ID).
 - `azad --status`: check that the saved answers are complete, without
   changing anything. Prints JSON.
 - `azad --reset`: start an instance over. While Terraform still records
@@ -120,10 +125,15 @@ deploy runs, automation and reset.
 
 ## Where things live
 
-- `~/.azad/instances/<name>/` holds everything one installation owns: your
-  answers and secrets (`.env`), its Cloudflare tokens, and `terraform/` with
-  its Terraform state. Without `--instance` the name is `default`. It's
-  private (0700, files 0600). Back it up; updates need it.
+- The installation's own cloud holds its state: a private bucket (R2 on
+  Cloudflare, GCS on Google Cloud) with Terraform's state and the app's
+  receipts, and a secret store (Cloudflare Secrets Store, Google Secret
+  Manager) with its keys. The deploy creates them.
+- `~/.azad/instances/<name>/` holds your answers and secrets (`.env`), the
+  Cloudflare tokens, and `terraform/` with the variables and a cache of the
+  keys. Without `--instance` the name is `default`. It's private (0700, files
+  0600). Keep an offline copy of the keys too: `azad --backup-keys DIR`
+  writes one.
 - `~/.azad/cache/azad-terraform/<version>/` holds the
   [azad-terraform](https://github.com/kodu-ai/azad-terraform) release this
   `azad` pins. The first deploy downloads it, checks its SHA-256 and reuses

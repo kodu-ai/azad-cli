@@ -223,8 +223,9 @@ during a deploy (see [Native push for the mobile apps](#native-push-for-the-mobi
 ## Install with Terraform only
 
 Every command names an instance directory that keeps this installation's
-settings, Terraform state, variables and keys; the checkout only provides
-code. Put the credentials in the instance directory's `.env` (here
+settings, variables and a cache of its keys (Terraform's state and the keys
+themselves live in the project's GCS bucket and Secret Manager); the checkout
+only provides code. Put the credentials in the instance directory's `.env` (here
 `~/.azad/instances/default/.env`, private to you). `azad`'s `.env` has this shape:
 
 ```sh
@@ -254,6 +255,8 @@ bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-d
 # A first install: plan and apply once more for everything else.
 bun --no-env-file "$TF/scripts/gcp.ts" plan --source ~/azad-source --instance-dir ~/.azad/instances/default -out=terraform.tfplan
 bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-dir ~/.azad/instances/default terraform.tfplan
+# Terraform builds the infrastructure only; this installs the app on it.
+bun --no-env-file "$TF/scripts/gcp.ts" deploy --source ~/azad-source --instance-dir ~/.azad/instances/default
 ```
 
 - `setup` reads the zone and Clerk's DNS targets, then writes
@@ -291,19 +294,22 @@ bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-d
   Remote iOS Simulator in your marketplace as Azad's apps (see
   "Official Mini Apps" in `docs/self-hosting.md` of the Azad source). If one
   fails, the deploy log names the command that retries only that step.
-- **Back up** the instance directory. It holds the instance's signing and
-  encryption keys; updates need it.
+- **Keep an offline copy of the keys:** `azad --backup-keys ~/azad-keys`
+  writes the instance's signing and encryption keys to a new folder. The
+  deploy keeps them in your project's Secret Manager.
 
-The instance directory holds everything this installation owns; the source
-checkout only provides code, and any checkout of the same revision deploys it:
+Terraform's state and the app's receipts live in your project's GCS bucket
+`<name>-<project hash>-install`, and the keys in its Secret Manager. The
+instance directory holds the rest; the source checkout only provides code,
+and any checkout of the same revision deploys it:
 
 - `.env`: your answers, which the deploy reads directly.
 - The Cloudflare token you pasted, and the scoped deployment token with its
   own Terraform state in `cloudflare-bootstrap/`.
-- `terraform/gcp-celld/`: the installation's Terraform state, the
-  `terraform.tfvars.json` that `setup` writes once, saved plans, Terraform's
-  working data (`.terraform/`) and `celld-install/`, the deploy's keys, tools
-  and log.
+- `terraform/gcp-celld/`: the `terraform.tfvars.json` that `setup` writes
+  once, the state bucket's configuration, saved plans, Terraform's working
+  data (`.terraform/`) and `celld-install/`, the deploy's cache of the keys,
+  its tools and log.
 
 ## Change settings
 
@@ -339,7 +345,7 @@ your session and no relay token yet:
 
 ```sh
 export AZAD_PUSH_RELAY_SESSION_TOKEN='<short-lived azad.pro session token>'
-bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-dir ~/.azad/instances/default -replace='module.app[0].terraform_data.deploy'
+bun --no-env-file "$TF/scripts/gcp.ts" deploy --source ~/azad-source --instance-dir ~/.azad/instances/default
 unset AZAD_PUSH_RELAY_SESSION_TOKEN
 ```
 
@@ -349,8 +355,9 @@ unset AZAD_PUSH_RELAY_SESSION_TOKEN
 - The session token must still be valid when the claim runs. If it has
   expired, the deploy still succeeds, its log shows the relay's refusal, and
   native push stays off until a deploy with a fresh token.
-- The relay token is kept in `terraform/gcp-celld/celld-install/secrets.json`
-  in the instance directory and deployed on every later update. The session token is never written to a file.
+- The relay token is kept in Secret Manager (and in
+  `terraform/gcp-celld/celld-install/secrets.json`) and deployed on every
+  later update. The session token is never written to a file.
 
 ## Differences from Azad on Cloudflare
 
@@ -366,12 +373,13 @@ unset AZAD_PUSH_RELAY_SESSION_TOKEN
 ```sh
 cd ~/azad-source && git pull --ff-only && bun install --frozen-lockfile
 bun --no-env-file "$TF/scripts/gcp.ts" refresh --source ~/azad-source --instance-dir ~/.azad/instances/default   # records the new revision
-bun --no-env-file "$TF/scripts/gcp.ts" init --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/gcp.ts" plan --source ~/azad-source --instance-dir ~/.azad/instances/default -out=terraform.tfplan
-bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-dir ~/.azad/instances/default terraform.tfplan
+bun --no-env-file "$TF/scripts/gcp.ts" deploy --source ~/azad-source --instance-dir ~/.azad/instances/default
 ```
 
-The deploy waits until the API serves the new revision. To update `azad`
+The deploy waits until the API serves the new revision, and refuses a checkout
+older than the one the installation runs. Plan and apply only when the
+infrastructure changes (a setting in `terraform.tfvars.json`, or a newer
+azad-terraform after `init`), then deploy. To update `azad`
 itself, rerun its install command; a newer release may pin a newer
 azad-terraform, which its next deploy downloads (`azad --doctor` prints the
 new `$TF`).
@@ -439,8 +447,8 @@ first [remove everything](#remove-everything), then:
 azad --reset --source ~/azad-source
 ```
 
-Reset reads the installation's Terraform state in the instance directory and
-the scoped token's state. While either still records resources it deletes
+Reset reads the installation's Terraform state (in its bucket, through
+azad-terraform) and the scoped token's state. While either still records resources it deletes
 nothing, lists them and prints the commands that remove them: azad-terraform's
 `gcp.ts init` and `gcp.ts destroy`, with the deletion-protection step above for
 a production install, and, after it, because the destroy uses it, the scoped
@@ -456,7 +464,7 @@ answers and private settings, the pasted token, the scoped token's records and
 empty state, and, in `terraform/gcp-celld/`, the `terraform.tfvars.json`, saved
 plans and `celld-install/` (the destroyed instance's keys). They hold
 credentials, so they are deleted rather than backed up. The Terraform state,
-its backups and your cloud accounts are not touched; delete the Clerk application (production installs) and the GitHub App in their
+the keys in Secret Manager and your cloud accounts are not touched; delete the Clerk application (production installs) and the GitHub App in their
 dashboards if you no longer need them. A new Clerk production instance for the
 same hostname needs the old application deleted first. Without a terminal, add
 `--yes`; `--json` prints one status (`reset_complete`, `needs_confirmation`,

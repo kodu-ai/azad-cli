@@ -276,22 +276,70 @@ test("after a destroy, reset also clears this instance's Terraform variables, pl
   ])
 })
 
-test("an instance whose Terraform working data records another backend is not verified", async () => {
-  const f = instance({ deployed: true })
-  mkdirSync(join(f.files, ".terraform"))
-  writeFileSync(
-    join(f.files, ".terraform", "terraform.tfstate"),
-    JSON.stringify({ backend: { type: "s3", config: { bucket: "state" } } })
+test("an installation whose state is in its bucket is read through the drivers", async () => {
+  const bucket = (listing: { status: number; stdout: string }) => {
+    const f = instance({ deployed: true })
+    mkdirSync(join(f.files, ".terraform"))
+    writeFileSync(
+      join(f.files, ".terraform", "terraform.tfstate"),
+      JSON.stringify({ backend: { type: "s3", config: { bucket: "state" } } })
+    )
+    const calls: string[][] = []
+    const execute: Run = (command, args) => {
+      calls.push([command, ...args])
+      return listing
+    }
+    return { f, calls, execute }
+  }
+  const live = bucket({
+    status: 0,
+    stdout: "module.base.module.cloudflare.cloudflare_r2_bucket.files\ndata.cloudflare_zone.x\n",
+  })
+  const refused = await resetInstance(
+    { directory: live.f.directory, terraform: live.f.terraform, confirm: refuse },
+    live.execute
   )
+  expect(refused).toMatchObject({
+    status: "live_resources",
+    states: [{ root: live.f.files, state: "live", resources: 1 }],
+  })
+  expect(live.calls[0]?.slice(3)).toEqual([
+    "state",
+    "list",
+    "--root",
+    "postgres",
+    "--instance-dir",
+    live.f.directory,
+  ])
+
+  const unreadable = bucket({ status: 1, stdout: "" })
   const report = await resetInstance(
-    { directory: f.directory, terraform: f.terraform, confirm: refuse },
-    noTerraform
+    {
+      directory: unreadable.f.directory,
+      terraform: unreadable.f.terraform,
+      confirm: refuse,
+    },
+    unreadable.execute
   )
   expect(report).toMatchObject({
     status: "state_unverified",
-    states: [{ root: f.files, state: "unverified" }],
+    states: [{ root: unreadable.f.files, state: "unverified" }],
   })
-  expect(existsSync(join(f.directory, ".env"))).toBe(true)
+  expect(existsSync(join(unreadable.f.directory, ".env"))).toBe(true)
+
+  const destroyed = bucket({ status: 0, stdout: "" })
+  expect(
+    (
+      await resetInstance(
+        {
+          directory: destroyed.f.directory,
+          terraform: destroyed.f.terraform,
+          confirm: async () => true,
+        },
+        destroyed.execute
+      )
+    ).status
+  ).toBe("reset_complete")
 })
 
 test("a live installation whose checkout is gone asks for --source, and gets the destroy commands for the checkout it names", async () => {

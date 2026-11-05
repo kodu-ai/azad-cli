@@ -1,8 +1,12 @@
+import { VERSION } from "./version"
+
 /**
  * Only operating-system plumbing and explicitly needed Google auth reach
  * helpers. On Windows that plumbing includes the profile folders where npm,
  * gcloud and Terraform keep their caches and credentials, and how cmd.exe
- * finds and runs commands.
+ * finds and runs commands. A release build also tells the azad-terraform
+ * drivers its version (`AZAD_CLI_VERSION`), which they record with the
+ * installation.
  */
 export function commandEnvironment() {
   const entries: [string, string][] = []
@@ -36,6 +40,8 @@ export function commandEnvironment() {
     const value = process.env[key]
     if (value) entries.push([key, value])
   }
+  if (/^\d+\.\d+\.\d+$/u.test(VERSION))
+    entries.push(["AZAD_CLI_VERSION", VERSION])
   return {
     ...Object.fromEntries(entries),
     WRANGLER_SEND_METRICS: "false",
