@@ -1,8 +1,9 @@
 import type { Command } from "./command"
 import { selfhost } from "./selfhost/command"
+import { update } from "./update/command"
 
 /** Every command group, by the name that selects it: `azad <name> …`. */
-export const COMMANDS: readonly Command[] = [selfhost]
+export const COMMANDS: readonly Command[] = [selfhost, update]
 
 /** The group that runs when the first argument names none: `azad [options]`. */
 export const DEFAULT_COMMAND: Command = selfhost
