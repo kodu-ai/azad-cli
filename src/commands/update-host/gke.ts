@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import type { StoreSelection } from "../update/installation"
+import { compareVersions } from "../update/release"
 import type { KubernetesCall, StoreReader } from "./cloud"
 
 /** The label every updater Job carries; the starter lists Jobs by it. */
@@ -364,12 +365,14 @@ export function gkeStarter(
 
     /**
      * `POST /start`: starts the updater Job for `version`, resuming the
-     * unfinished operation when it has the same target. A record running on
+     * unfinished operation when it has the same target, or replacing an
+     * unfinished release update with this newer release (the updater fixes
+     * forward). A record running on
      * this host whose Job no longer runs is confirmed stopped by the starter
      * itself; one running elsewhere (a laptop) is never taken over from here.
      *
-     * @throws {StartRefused} 400 for bad input, 409 when an update runs or a
-     *   different operation is unfinished.
+     * @throws {StartRefused} 400 for bad input, 409 when an update runs, a CLI
+     *   run is unfinished, or the unfinished update targets a newer release.
      */
     async start(body: unknown): Promise<{ host: HostView }> {
       const input = startSchema.safeParse(body)
@@ -396,7 +399,11 @@ export function gkeStarter(
         const what = `${current.kind}${current.target ? ` to ${current.target.version}` : ""}`
         if (
           current.kind !== "release-update" ||
-          current.target?.version !== input.data.version
+          (current.target?.version !== input.data.version &&
+            !(
+              current.target &&
+              compareVersions(input.data.version, current.target.version) > 0
+            ))
         )
           throw new StartRefused(
             409,

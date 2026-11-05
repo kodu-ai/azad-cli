@@ -155,7 +155,7 @@ test("two starters that see the same state choose the same Job name, so only one
   expect((await gkeStarter(config, later.kubernetes, storeOf({})).start(input)).host.executor).not.toBe(name)
 })
 
-test("start refuses while a Job runs, for another unfinished target, and for an update running elsewhere", async () => {
+test("start refuses while a Job runs, for an unfinished update to a newer release or a CLI run, and for an update running elsewhere", async () => {
   const input = { version: "4.30.0", acceptMaintenance: false }
   const refusal = async (jobs: Job[], operation: StoredObject | undefined, body: unknown = input) => {
     try {
@@ -166,7 +166,7 @@ test("start refuses while a Job runs, for another unfinished target, and for an 
     return undefined
   }
   expect(await refusal([job("azad-update-1", "2026-11-05T01:00:00Z")], undefined)).toMatchObject({ status: 409, code: "busy" })
-  expect(await refusal([], record({ target: { version: "4.29.0", manifestSha256: "b".repeat(64) } }))).toMatchObject({
+  expect(await refusal([], record({ target: { version: "4.31.0", manifestSha256: "b".repeat(64) } }))).toMatchObject({
     status: 409,
     code: "pending",
   })
@@ -189,6 +189,26 @@ test("a stopped operation resumes, and one this host's vanished Job still holds 
   })
   await gkeStarter(config, crashed.kubernetes, storeOf({ operation: held })).start({ version: "4.30.0", acceptMaintenance: false })
   const args = (crashed.created[0] as ReturnType<typeof import("./gke").updaterJob>).spec.template.spec.containers[0].args
+  expect(args.slice(-2)).toEqual(["--confirm-stopped", "azad-update-1"])
+})
+
+test("a newer release replaces a stopped update, and one this host's vanished Job still holds after confirming it stopped", async () => {
+  const older = { version: "4.29.0", manifestSha256: "b".repeat(64) }
+  const stopped = cluster([])
+  await gkeStarter(config, stopped.kubernetes, storeOf({ operation: record({ target: older }) })).start({
+    version: "4.30.0",
+    acceptMaintenance: false,
+  })
+  expect(stopped.created).toHaveLength(1)
+  const crashed = cluster([job("azad-update-1", "2026-11-05T01:00:00Z", "Failed")])
+  const held = record({
+    target: older,
+    status: "running",
+    holder: { executor: "azad-update-1", host: "gke-job", acquiredAt: "x", heartbeatAt: "y" },
+  })
+  await gkeStarter(config, crashed.kubernetes, storeOf({ operation: held })).start({ version: "4.30.0", acceptMaintenance: false })
+  const args = (crashed.created[0] as ReturnType<typeof import("./gke").updaterJob>).spec.template.spec.containers[0].args
+  expect(args).toContain("4.30.0")
   expect(args.slice(-2)).toEqual(["--confirm-stopped", "azad-update-1"])
 })
 

@@ -26,6 +26,16 @@ export const RELEASE_ORIGIN = "https://api.azad.pro"
 export const UPDATER_ENTRY = join("updater", "updater.js")
 
 export const semverSchema = z.string().regex(/^\d+\.\d+\.\d+$/u)
+
+/** Orders two `x.y.z` versions: negative when `a` is older, 0 when equal. */
+export function compareVersions(a: string, b: string): number {
+  const [left, right] = [a, b].map((version) => version.split(".").map(Number))
+  for (let index = 0; index < 3; index++) {
+    const difference = (left?.[index] ?? 0) - (right?.[index] ?? 0)
+    if (difference !== 0) return difference
+  }
+  return 0
+}
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/u)
 const sourceShaSchema = z.string().regex(/^[a-f0-9]{40}$/u)
 
