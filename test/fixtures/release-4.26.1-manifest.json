@@ -1,0 +1,2726 @@
+{
+  "format": 1,
+  "type": "azad-release",
+  "version": "4.26.1",
+  "sourceSha": "bd22ccf33f97217b1c7c442cf5fa6a79b631f270",
+  "publishedAt": "2026-11-05T01:40:24.030Z",
+  "artifacts": {
+    "api": {
+      "path": "api-4.26.1.tar.gz",
+      "sha256": "bd75c3ae15a84a856529a9de8391ac7f12f14272cb7aa83f30df499e355ba414",
+      "size": 5642469
+    },
+    "updater": {
+      "path": "updater-4.26.1.tar.gz",
+      "sha256": "010ae7f208481b6c560d3511564201afa080ad1d6a274b015b2eb4b4890e2daf",
+      "size": 5830358
+    },
+    "web": {
+      "path": "web-4.26.1.tar.gz",
+      "sha256": "250078468c32e6ea417201c796d84a7fd794f482971680980c1ccd4ca78f4957",
+      "size": 13367651
+    },
+    "agentConnect": {
+      "path": "agent-connect-manifest.json",
+      "sha256": "27dec877667dab49299a98e5c0c951476fff8722ddff2856f6df73f3a1b1184e",
+      "size": 9092
+    }
+  },
+  "migrations": [
+    {
+      "tag": "0000_jittery_donald_blake",
+      "when": 1779113395937,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0001_channel_files_uploaded_by",
+      "when": 1779197882000,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0002_add_channel_description",
+      "when": 1779200000000,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0003_flowery_mimic",
+      "when": 1779198541172,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0004_foamy_abomination",
+      "when": 1779208045365,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0005_simple_black_crow",
+      "when": 1779209963005,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0006_brief_speed_demon",
+      "when": 1779262417319,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0007_thick_luckman",
+      "when": 1779809646662,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0008_user_org_model_stage",
+      "when": 1779957575325,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0009_user_org_model_restore_fks",
+      "when": 1779957578623,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0010_futuristic_justin_hammer",
+      "when": 1780073154672,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0011_equal_the_enforcers",
+      "when": 1780316822372,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0012_crazy_kat_farrell",
+      "when": 1780584837852,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0013_mushy_warlock",
+      "when": 1780585964208,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0014_curious_natasha_romanoff",
+      "when": 1780586046704,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0015_fair_sentinel",
+      "when": 1780593240292,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0016_bent_maggott",
+      "when": 1780911415814,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0017_opposite_sage",
+      "when": 1780917188601,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0018_wandering_salo",
+      "when": 1780927123958,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0019_lethal_iron_monger",
+      "when": 1781090724645,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0020_colorful_war_machine",
+      "when": 1781450595286,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0021_hot_cannonball",
+      "when": 1781552884654,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0022_spicy_the_order",
+      "when": 1781811119147,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0025_agent_tasks_after_main",
+      "when": 1781811119148,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0026_calm_lorna_dane",
+      "when": 1781811119149,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0027_stormy_captain_cross",
+      "when": 1782132732788,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0028_young_zemo",
+      "when": 1782286776910,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0029_strange_saracen",
+      "when": 1782320687941,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0030_workable_skaar",
+      "when": 1782323951256,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0031_damp_newton_destine",
+      "when": 1782720273834,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0032_gray_human_robot",
+      "when": 1783083281048,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0033_curated_skills_git_delivery_repair",
+      "when": 1783083281049,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0034_agent_environment_default_for_repository",
+      "when": 1783451554858,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0035_plain_colonel_america",
+      "when": 1783457964140,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0036_chief_network",
+      "when": 1783465100264,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0037_cool_shooting_star",
+      "when": 1783507846572,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0038_living_archangel",
+      "when": 1783512942282,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0039_exotic_sebastian_shaw",
+      "when": 1783535358510,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0040_giant_impossible_man",
+      "when": 1783535706226,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0041_flashy_mephistopheles",
+      "when": 1783536237324,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0042_rich_the_anarchist",
+      "when": 1783536818824,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0043_dark_professor_monster",
+      "when": 1783538992406,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0044_fair_ma_gnuci",
+      "when": 1783546551950,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0045_typical_spencer_smythe",
+      "when": 1783547255905,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0046_previous_amphibian",
+      "when": 1783624582952,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0047_secret_amphibian",
+      "when": 1783779657006,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0048_quiet_forgotten_one",
+      "when": 1783781730146,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0049_tidy_dreaming_celestial",
+      "when": 1783782703737,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0050_short_ma_gnuci",
+      "when": 1783784217794,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0051_overrated_tyger_tiger",
+      "when": 1783785382031,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0052_noisy_khan",
+      "when": 1783804530865,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0053_tranquil_korvac",
+      "when": 1783851801756,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0054_true_next_avengers",
+      "when": 1783851847737,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0055_bright_mauler",
+      "when": 1783852654896,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0056_green_tarot",
+      "when": 1783855389421,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0057_keen_kitty_pryde",
+      "when": 1783855817267,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0058_furry_ulik",
+      "when": 1783857130540,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0059_needy_bulldozer",
+      "when": 1783863740679,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0060_gorgeous_cyclops",
+      "when": 1783950456160,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0061_warm_fat_cobra",
+      "when": 1783953244758,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0062_modern_princess_powerful",
+      "when": 1783963991742,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0063_confused_black_panther",
+      "when": 1783968177334,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0064_organic_mole_man",
+      "when": 1784058790570,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0065_glossy_susan_delgado",
+      "when": 1784070263855,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0066_modern_colleen_wing",
+      "when": 1784070274366,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0067_keen_zeigeist",
+      "when": 1784070287912,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0068_late_inhumans",
+      "when": 1784104708062,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0069_channel_agent_backup_configs",
+      "when": 1784228365827,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0070_sidebar_membership_user_indexes",
+      "when": 1784235926098,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0071_keen_cobalt_man",
+      "when": 1784302551075,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0072_next_newton_destine",
+      "when": 1784314653033,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0073_tricky_scarecrow",
+      "when": 1784360021824,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0074_dm_channels",
+      "when": 1784422882961,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0075_icy_tomas",
+      "when": 1784430676264,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0076_followers_v1",
+      "when": 1784436418265,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0077_red_sir_ram",
+      "when": 1784526759456,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0078_woozy_daredevil",
+      "when": 1784693006539,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0079_nappy_killmonger",
+      "when": 1784740752487,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0080_agent_principal_type_backfill",
+      "when": 1784744128327,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0081_channel_tab_config",
+      "when": 1784746118285,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0082_release_channel_tab_config",
+      "when": 1784746144933,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0083_clean_spiral",
+      "when": 1784765247744,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0084_smiling_warbound",
+      "when": 1784816675495,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0085_deep_husk",
+      "when": 1784826636661,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0086_striped_mordo",
+      "when": 1784940474784,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0087_ancient_loki",
+      "when": 1784947139164,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0088_catchup_skip_consumed_version_backfill",
+      "when": 1785017299095,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0089_sticky_nomad",
+      "when": 1785135046195,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0090_unknown_the_leader",
+      "when": 1785137242592,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0091_romantic_tana_nile",
+      "when": 1785141790754,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0092_steep_omega_red",
+      "when": 1785176009780,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0093_shallow_stature",
+      "when": 1785257760252,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0094_flippant_apocalypse",
+      "when": 1785273068232,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0095_lucky_runaways",
+      "when": 1785273112319,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0096_github_installation_owner_repair",
+      "when": 1785273113319,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0097_manual_channel_ring",
+      "when": 1785312469556,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0098_agent_event_pull_lane",
+      "when": 1785399749914,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0099_misty_aqueduct",
+      "when": 1785403276513,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0100_wise_tempest",
+      "when": 1785418119934,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0101_clean_ikaris",
+      "when": 1785424757360,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0102_mature_clint_barton",
+      "when": 1785446796338,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0103_lush_zeigeist",
+      "when": 1785450787346,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0104_v2_feature_gates",
+      "when": 1785453438767,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0105_v2_project_channel_domain",
+      "when": 1785455058555,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0106_v2_revision_engine",
+      "when": 1785457825699,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0107_v2_surface_lifecycle",
+      "when": 1785461619962,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0108_v2_mini_app_platform",
+      "when": 1785466385089,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0109_v2_agent_domain",
+      "when": 1785468385067,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0110_v2_agent_runtime",
+      "when": 1785472543931,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0111_v2_publish_recovery",
+      "when": 1785475645541,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0112_v2_publishes_paused",
+      "when": 1785478773543,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0113_v2_chat_classic_rework",
+      "when": 1785499615831,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0114_project_membership_backing_fanout",
+      "when": 1785505949021,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0115_gigantic_centennial",
+      "when": 1785513483517,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0116_project2_files_canonical_safety",
+      "when": 1785513483518,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0117_talented_silhouette",
+      "when": 1785519180230,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0118_lucky_swordsman",
+      "when": 1785519446369,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0119_complex_pepper_potts",
+      "when": 1785527538412,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0120_deep_chat_documents",
+      "when": 1785530824040,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0121_role_agent_backing_memberships",
+      "when": 1785541010808,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0122_v2_repository_mount_key",
+      "when": 1785543280923,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0123_v2_agent_transcripts",
+      "when": 1785551847868,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0124_v2_agent_transcript_segments",
+      "when": 1785563204261,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0125_swift_peter_parker",
+      "when": 1785610575914,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0126_military_plazm",
+      "when": 1785614301855,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0127_unusual_lord_hawal",
+      "when": 1785615328438,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0128_salty_makkari",
+      "when": 1785617714829,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0129_daily_clea",
+      "when": 1785620129485,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0130_salty_invaders",
+      "when": 1785620886841,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0131_lucky_silver_fox",
+      "when": 1785668561652,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0132_wandering_blink",
+      "when": 1785764563174,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0133_bent_logan",
+      "when": 1785785626460,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0134_parallel_wolf_cub",
+      "when": 1785812216745,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0135_low_black_cat",
+      "when": 1785815838246,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0136_lowly_amazoness",
+      "when": 1785858827328,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0137_fixed_nicolaos",
+      "when": 1785870269178,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0138_futuristic_namor",
+      "when": 1785875713108,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0139_bright_luke_cage",
+      "when": 1785872913273,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0140_chief_maximus",
+      "when": 1785881933677,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0141_cloudy_swarm",
+      "when": 1785887977114,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0142_curved_marrow",
+      "when": 1785889513876,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0143_activity_tables_0139_skip_repair",
+      "when": 1785893091287,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0144_misty_may_parker",
+      "when": 1785953556085,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0145_skinny_slyde",
+      "when": 1785964698730,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0146_wakeful_dark_phoenix",
+      "when": 1785967564480,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0147_futuristic_boom_boom",
+      "when": 1785975021546,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0148_colorful_sentinel",
+      "when": 1785992687587,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0149_dizzy_prodigy",
+      "when": 1785994997647,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0150_damp_nicolaos",
+      "when": 1786039279829,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0151_chemical_marrow",
+      "when": 1786099492249,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0152_miniapp_restore_points",
+      "when": 1786120584282,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0153_opposite_umar",
+      "when": 1786388252650,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0154_groovy_skreet",
+      "when": 1786430081639,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0155_parched_thor_girl",
+      "when": 1786431086787,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0156_cold_calypso",
+      "when": 1786435968954,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0157_ambitious_talos",
+      "when": 1786483017608,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0158_common_monster_badoon",
+      "when": 1786491021922,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0159_silky_the_hunter",
+      "when": 1786513188326,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0160_complete_swordsman",
+      "when": 1786525413529,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0161_ordinary_vanisher",
+      "when": 1786536336668,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0162_rapid_shotgun",
+      "when": 1786555721146,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0163_motionless_betty_brant",
+      "when": 1786617492435,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0164_cool_dragon_man",
+      "when": 1786627693093,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0165_opposite_magus",
+      "when": 1786637317571,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0166_repair_agent_connect_control_requests",
+      "when": 1786669866609,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0167_omniscient_greymalkin",
+      "when": 1786710812496,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0168_secret_viper",
+      "when": 1786741184299,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0169_unusual_roxanne_simpson",
+      "when": 1786734393563,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0170_amusing_franklin_richards",
+      "when": 1786737499057,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0171_daffy_ink",
+      "when": 1786781594244,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0172_chunky_richard_fisk",
+      "when": 1786781599218,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0173_remarkable_captain_marvel",
+      "when": 1786786124932,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0174_overconfident_violations",
+      "when": 1786787720565,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0175_superb_post",
+      "when": 1786793874883,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0176_striped_machine_man",
+      "when": 1786794893586,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0177_known_pete_wisdom",
+      "when": 1786970500672,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0178_faithful_dust",
+      "when": 1786972364870,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0179_redundant_masque",
+      "when": 1786978314666,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0180_dm-zone-backfill",
+      "when": 1786978324953,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0181_subscription-funding-cutoff",
+      "when": 1787208588883,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0182_subscription-schema-drops",
+      "when": 1787208993236,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0183_real_vector",
+      "when": 1787478192051,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0184_hot_hellion",
+      "when": 1787492258468,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0185_majestic_masque",
+      "when": 1787516683660,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0186_sour_stick",
+      "when": 1787591291649,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0187_brave_tyrannus",
+      "when": 1787605442941,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0188_dashing_tinkerer",
+      "when": 1787662190702,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0189_lucky_nighthawk",
+      "when": 1787666553611,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0190_third_miss_america",
+      "when": 1787667470432,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0191_square_roland_deschain",
+      "when": 1787670036403,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0192_nice_bulldozer",
+      "when": 1787687728775,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0193_known_captain_britain",
+      "when": 1787696329084,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0194_yielding_silvermane",
+      "when": 1787729587256,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0195_catchup_model_connection_revoked_enum",
+      "when": 1787736385564,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0196_silent_talisman",
+      "when": 1787737697192,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0197_channel_deletion_operations",
+      "when": 1787739108395,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0198_release_queue_schedules",
+      "when": 1787740225159,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0199_repair_role_channel_binding_contract",
+      "when": 1787753470382,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0200_enforce_role_channel_binding_contract",
+      "when": 1787770056039,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0201_legal_genesis",
+      "when": 1787771251700,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0202_vengeful_medusa",
+      "when": 1787827987840,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0203_webb3_retired_members",
+      "when": 1787840944341,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0204_workspace-mcp-connections",
+      "when": 1787931057074,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0205_short_xorn",
+      "when": 1788000897413,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0206_known_electro",
+      "when": 1788030894274,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0207_flaky_senator_kelly",
+      "when": 1788091311836,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0208_tiresome_lionheart",
+      "when": 1788112487137,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0209_dizzy_hemingway",
+      "when": 1788175460933,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0210_lethal_colonel_america",
+      "when": 1788210153842,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0211_military_zarek",
+      "when": 1788291937785,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0212_omniscient_titanium_man",
+      "when": 1788334032046,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0213_married_starhawk",
+      "when": 1788343538526,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0214_lying_sir_ram",
+      "when": 1788379846119,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0215_chilly_frank_castle",
+      "when": 1788390431379,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0216_freezing_ghost_rider",
+      "when": 1788516274219,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0217_workable_purple_man",
+      "when": 1788520043535,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0218_sloppy_bloodstrike",
+      "when": 1788531537222,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0219_aberrant_ronan",
+      "when": 1788539593202,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0220_needy_slipstream",
+      "when": 1788558411623,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0221_romantic_kulan_gath",
+      "when": 1788560951160,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0222_mcp_thread_lookup",
+      "when": 1788588865100,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0223_glossy_toad",
+      "when": 1788598291374,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0224_durable_revision_reconciliation",
+      "when": 1788605463019,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0225_white_kree",
+      "when": 1788609841073,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0226_push_dispatch_receipts",
+      "when": 1788614940344,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0227_sharp_patriot",
+      "when": 1788616769186,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0228_single_use_capability_redemptions",
+      "when": 1788635926058,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0229_slim_lady_ursula",
+      "when": 1788696528098,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0230_tranquil_miek",
+      "when": 1788721171407,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0231_wise_stryfe",
+      "when": 1788730810422,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0232_session_requests",
+      "when": 1788764838245,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0233_blushing_firelord",
+      "when": 1788801396717,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0234_round_micromacro",
+      "when": 1788809212288,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0235_graceful_giant_girl",
+      "when": 1788819008525,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0236_luxuriant_metal_master",
+      "when": 1789032460484,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0237_wakeful_chameleon",
+      "when": 1789123646090,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0238_acoustic_malcolm_colcord",
+      "when": 1789141560273,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0239_tranquil_wendell_vaughn",
+      "when": 1789375659481,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0240_hesitant_loners",
+      "when": 1789375686594,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0241_flowery_omega_sentinel",
+      "when": 1789379059338,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0242_spotty_korg",
+      "when": 1789379315246,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0243_mcp_result_downloads",
+      "when": 1789549638235,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0244_app_platform_foundation",
+      "when": 1790066133122,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0245_app_push_delivery",
+      "when": 1790066458543,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0246_app_builtin_contracts",
+      "when": 1790070261241,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0247_app_record_ownership",
+      "when": 1790070603645,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0248_app_meeting_admission",
+      "when": 1790070787570,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0249_app_recording_file_reference",
+      "when": 1790071249441,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0250_app_private_admission",
+      "when": 1790071462916,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0251_app_meeting_events",
+      "when": 1790071915915,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0252_app_identity_and_session_lifecycle",
+      "when": 1790072672786,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0253_app_resources_and_streams",
+      "when": 1790073484392,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0254_app_file_versions",
+      "when": 1790075870323,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0255_app_chat_delivery",
+      "when": 1790076257118,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0256_dm_profile_alias_custody",
+      "when": 1790076348771,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0257_app_file_name_scope",
+      "when": 1790076545744,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0258_channel_creator_identity",
+      "when": 1790077963729,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0259_app_chat_commit_recovery",
+      "when": 1790078624992,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0260_app_mount_order",
+      "when": 1790081693861,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0261_core_chat_records",
+      "when": 1790088948273,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0262_channel_app_providers",
+      "when": 1790093307905,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0263_shared_env_vault",
+      "when": 1790093562335,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0264_remove_managed_services",
+      "when": 1790094413925,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0265_file_document_kind",
+      "when": 1790096684518,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0266_core_chat_execution_proof",
+      "when": 1790101106166,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0267_app_chat_outbox_refusals",
+      "when": 1790329962551,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0268_app_runtime_maintenance",
+      "when": 1790332281049,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0269_remove_role_schedules",
+      "when": 1790333285752,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0270_app_file_outbox_pending",
+      "when": 1790334226114,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0271_remove_dead_channel_agent_tables",
+      "when": 1790336859356,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0272_remove_channel_model_access_tables",
+      "when": 1790337113557,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0273_remove_classic_channel_invites",
+      "when": 1790344085183,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0274_vault_entries_default_shared",
+      "when": 1790424481569,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0275_vault_key_notes_general_secrets",
+      "when": 1790428650964,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0276_true_betty_ross",
+      "when": 1790659295066,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0277_bot_automations",
+      "when": 1790662939021,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0278_deep_screwball",
+      "when": 1790694366661,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0279_equal_legion",
+      "when": 1790695790577,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0280_notification_levels",
+      "when": 1790705016035,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0281_notification_preferences",
+      "when": 1790770708353,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0282_notification_delivery_options",
+      "when": 1790771822131,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0283_session_notification_alerts",
+      "when": 1790772113383,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0284_remove_direct_notification_badges",
+      "when": 1790788652397,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0285_session_needs_you_observations",
+      "when": 1790797765038,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0286_elite_mad_thinker",
+      "when": 1790809677760,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0287_glorious_agent_brand",
+      "when": 1790836517029,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0288_workable_jack_murdock",
+      "when": 1790868446007,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0289_plain_scalphunter",
+      "when": 1790913329797,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0290_flowery_gunslinger",
+      "when": 1791113787200,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0291_slim_centennial",
+      "when": 1791267884260,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0292_graceful_thing",
+      "when": 1791268408933,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0293_sentry-installation-connections",
+      "when": 1791293576863,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0294_sentry-inbox-retry",
+      "when": 1791294034520,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0295_solid_punisher",
+      "when": 1791305121612,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0296_amused_magdalene",
+      "when": 1791311254257,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0297_tasks",
+      "when": 1791359317834,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0298_tasks-retained-rows",
+      "when": 1791364319256,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0299_attachment_cleanup",
+      "when": 1791381055384,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0300_hosted-media-usage",
+      "when": 1791402202443,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0301_hot-path-indexes",
+      "when": 1791465577083,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0302_control-busy-backoff",
+      "when": 1791491082433,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0303_control-unsettled-lease-index",
+      "when": 1791496262927,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0304_meeting_start_actor",
+      "when": 1791538559013,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0305_stopped-task-notices",
+      "when": 1791542293590,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0306_machine-health-samples",
+      "when": 1791543549111,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0307_great_reaper",
+      "when": 1791558125247,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0308_amused_lizard",
+      "when": 1791559413473,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0309_shiny_post",
+      "when": 1791560496180,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0310_dapper_anita_blake",
+      "when": 1791650421236,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0311_dusty_korvac",
+      "when": 1791651089614,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0312_grey_colonel_america",
+      "when": 1791658082331,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0313_oval_epoch",
+      "when": 1791758476680,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0314_volatile_piledriver",
+      "when": 1791760582600,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0315_steady_ben_parker",
+      "when": 1791807707329,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0316_gold_session_state",
+      "when": 1791810337645,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0317_gold_session_state_backfill",
+      "when": 1791810349988,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0318_gold_session_state_final",
+      "when": 1791810352674,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0319_acoustic_tyger_tiger",
+      "when": 1791837356127,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0320_calm_rocket_racer",
+      "when": 1791883292199,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0321_event_routines",
+      "when": 1791971849097,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0322_routine_event_chains",
+      "when": 1792067955275,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0323_push_dispatch_receipts_scope",
+      "when": 1792138815617,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0324_session_checkpoints",
+      "when": 1792174577032,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0325_glamorous_deathstrike",
+      "when": 1792318350446,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0327_charming_iron_fist",
+      "when": 1792327897327,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0328_early_slapstick",
+      "when": 1792331196393,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0329_curious_gladiator",
+      "when": 1792332600284,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0330_nasty_vampiro",
+      "when": 1792419233863,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0331_clever_agent_zero",
+      "when": 1792420884205,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0332_spicy_wendell_rand",
+      "when": 1792475679536,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0333_read_sync_add",
+      "when": 1792483939665,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0334_read_sync_backfill",
+      "when": 1792483948642,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0335_read_sync_drop",
+      "when": 1792483958084,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0336_read_sync_fanout",
+      "when": 1792483967288,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0337_quiet_chameleon",
+      "when": 1792520683179,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0338_blue_wendell_vaughn",
+      "when": 1792522772394,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0339_member_notes",
+      "when": 1792526049449,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0340_session_startup_observer",
+      "when": 1792528276133,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0341_chunky_dagger",
+      "when": 1792528950481,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0342_dry_mystique",
+      "when": 1792529260252,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0343_famous_shiver_man",
+      "when": 1792533982151,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0344_dusty_the_liberteens",
+      "when": 1792537022674,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0345_project_skills_index",
+      "when": 1792564289895,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0346_yielding_apocalypse",
+      "when": 1792586007831,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0347_presence_rules",
+      "when": 1792600237324,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0348_message_snippet_file_index",
+      "when": 1792613839962,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0349_query_plan_indexes",
+      "when": 1792614298829,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0350_transcript_segment_index",
+      "when": 1792616055566,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0351_role-placement-operations",
+      "when": 1792623661499,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0352_spooky_black_tom",
+      "when": 1792664981220,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0353_app_lifecycle_delivery",
+      "when": 1792676888367,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0354_diagnostic_operator_role",
+      "when": 1792695653582,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0355_one_time_handoff",
+      "when": 1792702449950,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0356_session_chat",
+      "when": 1792705792610,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0357_managed_source_authority",
+      "when": 1792716084802,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0358_revision_source_identity",
+      "when": 1792719413303,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0359_selected_source_admission",
+      "when": 1792719484076,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0360_presence_log",
+      "when": 1792748710232,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0361_presence_routine_trigger",
+      "when": 1792749972838,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0362_presence_watch_live_routine",
+      "when": 1792756264969,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0363_tricky_kate_bishop",
+      "when": 1792768313613,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0364_neat_northstar",
+      "when": 1792771511939,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0365_sweep_prepare",
+      "when": 1792794363396,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0366_sweep_expand",
+      "when": 1792794394723,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0367_sweep_expand_data",
+      "when": 1792794404897,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0368_sweep_pre_contract",
+      "when": 1792794413245,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0369_sweep_rename",
+      "when": 1792794544164,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0370_sweep_contract",
+      "when": 1792794599743,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0371_sweep_drift_cleanup",
+      "when": 1792794610512,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0372_reclaim_role_bundles",
+      "when": 1792810724843,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0373_common_black_crow",
+      "when": 1792961728578,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0374_voice_transcript_search_index",
+      "when": 1792964860501,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0375_file_caption",
+      "when": 1792965944541,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0376_session_write_receipts",
+      "when": 1792967714172,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0377_rename_claude_harness",
+      "when": 1792967723367,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0378_message_forward_reference",
+      "when": 1793013990984,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0379_illegal_wildside",
+      "when": 1793084629512,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0380_rich_lenny_balinger",
+      "when": 1793106793064,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0381_nice_triathlon",
+      "when": 1793109292663,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0382_release_card_project_index",
+      "when": 1793174353245,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0383_funny_darkhawk",
+      "when": 1793179189657,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0384_dm_meeting_project",
+      "when": 1793199827988,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0385_private_session_archive_retention",
+      "when": 1793205695469,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0386_shared_search_projection",
+      "when": 1793258555538,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0387_code_mode_org_limits",
+      "when": 1793262226568,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0388_next_measured_query_indexes",
+      "when": 1793291166933,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0389_machine_incidents",
+      "when": 1793292906476,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0390_retired_machines",
+      "when": 1793296069326,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0391_shared_search_projection",
+      "when": 1793299014686,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0392_keen_mathemanic",
+      "when": 1793303819552,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0393_round_impossible_man",
+      "when": 1793305622738,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0394_machine_release_selection",
+      "when": 1793308769240,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0395_wooden_ego",
+      "when": 1793310855488,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0396_miniapp_loader_provider",
+      "when": 1793313741576,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0397_configuration_action_recovery",
+      "when": 1793317985037,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0398_vault_writer_fence",
+      "when": 1793320728327,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0399_vault_writer_fence_drop",
+      "when": 1793320741647,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0400_git_source_only",
+      "when": 1793321558287,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0401_meeting_pipeline_event_chunk",
+      "when": 1793350435879,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0402_worried_inhumans",
+      "when": 1793353941099,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0403_user_timezone",
+      "when": 1793356370637,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0404_backfill_user_timezone",
+      "when": 1793356410093,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0405_retire_notification_timezone",
+      "when": 1793356519116,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0406_first_impossible_man",
+      "when": 1793360164946,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0407_organization_deletion",
+      "when": 1793373189179,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0408_project_creation_nonce",
+      "when": 1793552910007,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0409_machine_idle_reclaim",
+      "when": 1793554363046,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0410_external_sessions",
+      "when": 1793568099256,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0411_file_upload_multipart",
+      "when": 1793605558066,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0412_routine_run_sessions",
+      "when": 1793608896208,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0413_trajectory_timeline_index",
+      "when": 1793629711890,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0414_trajectory_timeline_failure_index",
+      "when": 1793632695711,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0415_marketplace_listing_delisted",
+      "when": 1793633625452,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0416_channel_sections",
+      "when": 1793634387121,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0417_channel_sections_backfill",
+      "when": 1793634402774,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0418_channel_sections_required",
+      "when": 1793634417875,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0419_search_passages_author_index",
+      "when": 1793647322420,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0420_channel_agent_removals",
+      "when": 1793648801314,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0421_trajectory-staging-backoff",
+      "when": 1793650039794,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0422_shared_search_projection",
+      "when": 1793653964875,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0423_trajectory_event_trajectory_search",
+      "when": 1793657859225,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0424_external_channel_silent_partners",
+      "when": 1793660258448,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0425_drop_trajectory_event_search",
+      "when": 1793661998037,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0426_search_vector_inline",
+      "when": 1793664941380,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0427_message_attention",
+      "when": 1793665795683,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0428_external_invite_links",
+      "when": 1793699805544,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0429_app_approval_requester",
+      "when": 1793706172769,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0430_app_owned_routines",
+      "when": 1793708920621,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0431_search_emoji_terms",
+      "when": 1793712452302,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0432_messages_emoji_search",
+      "when": 1793712472703,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0433_shared_search_projection",
+      "when": 1793712494837,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0434_github_person_repositories",
+      "when": 1793714591602,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0435_machine_roster_certification",
+      "when": 1793718461928,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0436_avatar_digest_index",
+      "when": 1793725527901,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0437_drop_session_wake_gates",
+      "when": 1793752723754,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0438_episode_latest_index",
+      "when": 1793766299998,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0439_lethal_skaar",
+      "when": 1793793620828,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0440_machine_roster_manifest",
+      "when": 1793795734247,
+      "postDeploy": false,
+      "maintenance": false
+    },
+    {
+      "tag": "0441_global_message_attention_dismissal",
+      "when": 1793799519275,
+      "postDeploy": true,
+      "maintenance": false
+    },
+    {
+      "tag": "0442_restore_approved_workspace_invite_proofs",
+      "when": 1793828702330,
+      "postDeploy": false,
+      "maintenance": false
+    }
+  ],
+  "upgrade": {
+    "previous": {
+      "version": "4.26.0",
+      "sourceSha": "2a462ee648b8183ad3fcbbe35d5794b8d874c6d0",
+      "manifestSha256": "d90784dc43b6c140be9791960dde89ceddc6e2d090eb7dc2c1ab38f3aeb41b47",
+      "head": "0442_restore_approved_workspace_invite_proofs"
+    },
+    "minMigration": "0441_global_message_attention_dismissal",
+    "minVersion": "4.26.0",
+    "steppingStones": [],
+    "mode": "online"
+  },
+  "infrastructure": {
+    "revision": 1,
+    "capabilities": []
+  },
+  "compatible": {
+    "agentConnect": {
+      "version": "0.4.0",
+      "sourceManifestSha256": "27dec877667dab49299a98e5c0c951476fff8722ddff2856f6df73f3a1b1184e"
+    },
+    "cli": {
+      "min": "0.0.2",
+      "maxExclusive": null
+    },
+    "terraform": {
+      "min": "0.0.2",
+      "maxExclusive": null
+    },
+    "clients": {
+      "web": {
+        "min": null,
+        "maxExclusive": null
+      },
+      "desktop": {
+        "min": null,
+        "maxExclusive": null
+      },
+      "ios": {
+        "min": null,
+        "maxExclusive": null
+      },
+      "android": {
+        "min": null,
+        "maxExclusive": null
+      },
+      "agentConnect": {
+        "min": null,
+        "maxExclusive": null
+      }
+    }
+  },
+  "wranglerVersion": "4.151.3",
+  "keyId": "branch-las-vegas",
+  "signature": "Ywnn+YLvP5s+b8wkM/CENqynUgHHiv3jKCf2n817LNw6ydvlYcjIgEd8L1iXA329ckNs05+k4sMVpEL9am25Dg=="
+}

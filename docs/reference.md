@@ -192,6 +192,46 @@ commit. Update a running installation to a new commit with the drivers'
 older than the commit the installation runs. If the source has no
 `node_modules`, the deploy runs `bun install --frozen-lockfile` in it first.
 
+## Updates
+
+`azad update` installs a published Azad release on a deployed installation,
+the same release azad.pro runs, along the upgrade path the release declares:
+
+```sh
+azad update                      # the release azad.pro runs now
+azad update --version 4.30.0     # an exact release
+azad update --status             # what runs, the current or last update, the latest release (--json for JSON)
+```
+
+It downloads the release's manifest from `https://api.azad.pro/api/v3/releases/`,
+checks its Ed25519 signature against the key azad pins (never one the server
+names), downloads the release's updater and checks its size and SHA-256
+against the manifest, then runs it with Bun on this machine. The updater
+installs any release the path requires first, then the target, each with the
+installer that release ships, and records the result in the installation's
+receipt. It reads the installation from the instance directory: the state
+bucket that `backend.json` names, the settings file and the key cache
+(`installer-state/` or `celld-install/`) that `terraform.tfvars.json` names.
+Google Cloud needs gcloud's Application Default Credentials, as a deploy does.
+
+An update never runs Terraform. A release that needs new infrastructure, a
+newer azad or a newer azad-terraform stops before it changes anything and says
+so; update azad and rerun `azad --source CHECKOUT` first. A release whose
+migrations cannot run while the API serves is a maintenance release: pass
+`--accept-maintenance` to accept the downtime. The installation's operation
+record is the same lock deploys take, so an update and a deploy never run at
+once; an interrupted update resumes when you run the same command again, and
+`--confirm-stopped EXECUTOR` takes over one whose updater stopped without
+releasing it (the refusal names the executor), once you know it no longer
+runs.
+
+The installation's own updater hosts, which the console starts, run the same
+command from the updater image `ghcr.io/kodu-ai/azad-updater` (each release
+names its digest in `azad-updater-image.txt`): the Google Cloud update Job
+runs `azad update --host gke-job`, started by `azad update-host gke` beside
+the API in each API pod, and the Cloudflare updater container runs
+`azad update --host cloudflare-container`. azad-terraform configures them.
+
 ## Instances
 
 Each installation has its own instance directory, created private (0700,

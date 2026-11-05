@@ -34,9 +34,65 @@ jobs:
     needs: version
     uses: ./.github/workflows/ci.yml
 
+  image:
+    name: Publish the updater image
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      reference: ${{ steps.push.outputs.reference }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: azad-dist
+          path: dist
+      - name: The image's executable is the release's
+        run: cd dist && sha256sum --check --ignore-missing SHA256SUMS && test -f azad-linux-x64
+      # Built once per release from the checked executable; installations
+      # run it by the digest pushed here, never by its tag.
+      - name: Build and push ghcr.io/kodu-ai/azad-updater
+        id: push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          TAG: ${{ github.ref_name }}
+          REVISION: ${{ github.sha }}
+        run: |
+          image=ghcr.io/kodu-ai/azad-updater
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+          # A BuildKit builder reports the pushed manifest's digest; one
+          # manifest, without attestations, is what every host pulls.
+          docker buildx create --use --name azad-updater
+          docker buildx build --platform linux/amd64 --push \
+            --provenance=false --sbom=false \
+            --label "org.opencontainers.image.version=${TAG#v}" \
+            --label "org.opencontainers.image.revision=$REVISION" \
+            --metadata-file "$RUNNER_TEMP/image.json" \
+            --tag "$image:${TAG#v}" .
+          digest=$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/image.json")
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          echo "reference=$image@$digest" >> "$GITHUB_OUTPUT"
+          docker logout ghcr.io
+      # Pulled anonymously, as installations pull it: a package that is not
+      # public fails here instead of in a customer's cluster.
+      - name: The pushed image runs this release
+        env:
+          REFERENCE: ${{ steps.push.outputs.reference }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          actual=$(docker run --rm "$REFERENCE" --version)
+          echo "$actual"
+          test "$actual" = "${TAG#v} ($GITHUB_SHA)"
+
   publish:
     name: Publish the GitHub release
-    needs: ci
+    needs: [ci, image]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -53,16 +109,25 @@ jobs:
           for asset in azad-linux-x64 azad-linux-arm64 azad-darwin-arm64 azad-darwin-x64 azad-windows-x64.exe install.sh azad-setup.md; do
             grep -q "  $asset\$" SHA256SUMS
           done
+      - name: Name the updater image by digest
+        env:
+          REFERENCE: ${{ needs.image.outputs.reference }}
+        run: |
+          cd dist
+          printf '%s\n' "$REFERENCE" > azad-updater-image.txt
+          sha256sum azad-updater-image.txt >> SHA256SUMS
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
+          REFERENCE: ${{ needs.image.outputs.reference }}
         run: |
           prerelease=()
           case "$TAG" in *-*) prerelease=(--prerelease) ;; esac
           gh release create "$TAG" dist/* \
             --verify-tag \
             --title "azad ${TAG#v}" \
+            --notes "Updater image: \`$REFERENCE\`" \
             --generate-notes \
             "${prerelease[@]}"

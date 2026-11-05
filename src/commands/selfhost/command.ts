@@ -93,6 +93,7 @@ const HELP = [
   "  azad --non-interactive --create-tokens|--plan|--apply --source CHECKOUT [--terraform-dir PATH] [--instance NAME | --directory PATH]",
   "  azad --provision-meetings --web-host HOST --bootstrap-file PRIVATE_ENV --settings-file PRIVATE_ENV [--settings-file PRIVATE_ENV] [--account-id ID] [--app-name NAME]",
   "  azad --version | --help",
+  "  azad update [--instance NAME | --directory PATH] [--version latest|x.y.z] [--status]   (azad update --help)",
   "",
   "Self-hosting is the default command; `azad selfhost [options]` is the same.",
   "",
