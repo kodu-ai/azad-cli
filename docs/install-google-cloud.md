@@ -379,7 +379,9 @@ bun --no-env-file "$TF/scripts/gcp.ts" deploy --source ~/azad-source --instance-
 The deploy waits until the API serves the new revision, and refuses a checkout
 older than the one the installation runs. Plan and apply only when the
 infrastructure changes (a setting in `terraform.tfvars.json`, or a newer
-azad-terraform after `init`), then deploy. To update `azad`
+azad-terraform after `init --source ~/azad-source`), then deploy. For an
+installation made with azad 0.0.x, that first `init` moves the local
+Terraform state into the GCS bucket. To update `azad`
 itself, rerun its install command; a newer release may pin a newer
 azad-terraform, which its next deploy downloads (`azad --doctor` prints the
 new `$TF`).

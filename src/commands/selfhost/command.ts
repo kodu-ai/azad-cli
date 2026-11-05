@@ -240,14 +240,12 @@ async function selfhostMain(argv: string[]): Promise<number> {
   if (values.doctor) return doctor(location, terraform)
   if (values["backup-keys"] !== undefined) {
     const saved = savedSettings(location.directory) ?? {}
-    const out = await backupKeys(
+    // The driver prints where it wrote the keys.
+    await backupKeys(
       location.directory,
       saved,
       { source: source ?? saved.AZAD_CLI_SOURCE, terraform },
       resolve(localPath(values["backup-keys"]))
-    )
-    process.stdout.write(
-      `Wrote the installation's keys to ${out}. Keep it offline and private: these keys decrypt your data.\n`
     )
     return 0
   }

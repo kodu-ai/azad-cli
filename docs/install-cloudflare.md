@@ -265,13 +265,16 @@ fixed setting as `immutable` and any other change as `bound_instance`.
 ```sh
 cd ~/azad-source && git pull --ff-only && bun install --frozen-lockfile
 bun --no-env-file "$TF/scripts/cloudflare.ts" refresh --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/cloudflare.ts" init --root postgres --instance-dir ~/.azad/instances/default
+bun --no-env-file "$TF/scripts/cloudflare.ts" init --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
 bun --no-env-file "$TF/scripts/cloudflare.ts" plan --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default -out=terraform.tfplan
 bun --no-env-file "$TF/scripts/cloudflare.ts" apply --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default terraform.tfplan
 bun --no-env-file "$TF/scripts/cloudflare.ts" deploy --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
 ```
 
-Use `--root cloudsql` for a Cloud SQL database. To update `azad` itself, rerun
+Use `--root cloudsql` for a Cloud SQL database. An installation made with azad
+0.0.x needs one change first: in the Cloudflare dashboard, edit its deployment
+token and add Account, Secrets Store, Edit (the value stays the same). Its
+first `init` then moves the local Terraform state into the R2 bucket. To update `azad` itself, rerun
 its install command; a newer release may pin a newer azad-terraform, which its
 next deploy downloads (`azad --doctor` prints the new `$TF`).
 

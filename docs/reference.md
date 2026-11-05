@@ -151,22 +151,22 @@ The Terraform roots, modules and drivers live in
 The drivers run from the azad-terraform directory with `bun --no-env-file`,
 so nothing depends on the working directory. `azad` passes the app source as
 `--source` to the commands that deploy or change the installation (`setup`,
-`refresh`, `plan`, `apply`, `deploy`, `destroy`, `backup-keys`), never to
-read-only ones (`init`, `show`, `output`, `state list`, `phase`), and the
-instance directory last:
+`refresh`, `plan`, `apply`, `deploy`, `destroy`, `backup-keys`) and to `init`,
+which uses it to move an azad 0.0.x local state, never to read-only ones
+(`show`, `output`, `state list`, `phase`), and the instance directory last:
 
 ```sh
 bun --no-env-file $TF/scripts/cloudflare.ts setup --database-provider postgres|cloudsql \
   --web-host HOST --credentials INSTANCE/.env --account-id ID \
   [--project-id ID --runner-cidr CIDR] --root postgres|cloudsql --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/cloudflare.ts init --root postgres|cloudsql --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/cloudflare.ts init --root postgres|cloudsql --source APP --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/cloudflare.ts plan -out=terraform.tfplan --root … --source APP --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/cloudflare.ts apply terraform.tfplan --root … --source APP --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/cloudflare.ts deploy --root … --source APP --instance-dir INSTANCE
 
 bun --no-env-file $TF/scripts/gcp.ts setup --credentials INSTANCE/.env --project-id ID --region REGION \
   --web-host HOST --account-id ID [--evaluation] [--disk-backups …] [--agent-machine …] --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/gcp.ts init -input=false --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/gcp.ts init -input=false --source APP --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/gcp.ts phase --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/gcp.ts plan -input=false -out=terraform.tfplan --source APP --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/gcp.ts apply -input=false terraform.tfplan --source APP --instance-dir INSTANCE
