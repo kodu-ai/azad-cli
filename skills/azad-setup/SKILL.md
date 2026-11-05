@@ -323,7 +323,14 @@ destroy and a start over only if the person wants it. Review the plan as in
 section 5 before they confirm. Automation never changes a
 deployed instance (`bound_instance`, or `immutable` for a fixed setting).
 
-**Update to a new revision** through the azad-terraform drivers, not the
+**Update to a new release** with `azad update` (the release azad.pro runs;
+`--version x.y.z` for another, `--status` to see what runs and what is newer).
+It verifies the signed release and runs the updater it ships; it never runs
+Terraform. If it says the release needs new infrastructure or a newer azad,
+update azad and redeploy from source first, as below. A maintenance release
+needs `--accept-maintenance`: ask the person before accepting downtime.
+
+**Update to a new source revision** through the azad-terraform drivers, not the
 wizard. In the bound source checkout:
 
 ```sh

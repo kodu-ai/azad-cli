@@ -93,6 +93,10 @@ The commands you'll actually use:
   `--directory PATH` for any other folder.
 - `azad --doctor`: list missing or too-old tools for the saved target, and
   which azad-terraform a deploy will use.
+- `azad update`: install the release azad.pro runs now on a deployed
+  installation, from its signed release (`--version x.y.z` picks another
+  one). `azad update --status` shows what runs and what's newer. See
+  [Updates](docs/reference.md#updates).
 - `azad --backup-keys ~/azad-keys`: write an offline copy of the
   installation's keys to a new folder. Keep it off the cloud.
 - `azad --take-over ID`: let a deploy take over the operation a stopped run
