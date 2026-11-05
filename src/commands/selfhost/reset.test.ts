@@ -119,7 +119,7 @@ test("reset refuses while the installation's Terraform state records resources, 
   ])
   const helper = `bun --no-env-file ${join(f.terraform.directory, "scripts", "cloudflare.ts")}`
   expect(report.commands).toEqual([
-    `${helper} init --root postgres --instance-dir ${f.directory} && ${helper} destroy --root postgres --source ${f.source} --instance-dir ${f.directory}`,
+    `${helper} init --root postgres --source ${f.source} --instance-dir ${f.directory} && ${helper} destroy --root postgres --source ${f.source} --instance-dir ${f.directory}`,
   ])
   expect(report.message).toContain("azad --reset again")
   expect(report.message).not.toContain("fixture-")
@@ -143,7 +143,7 @@ test("on Google Cloud the refusal adds the deletion-protection step, unless the 
   if (production.status !== "live_resources") return
   const helper = `bun --no-env-file ${join(f.terraform.directory, "scripts", "gcp.ts")}`
   expect(production.commands).toEqual([
-    `${helper} init --instance-dir ${f.directory} && ${helper} destroy --source ${f.source} --instance-dir ${f.directory}`,
+    `${helper} init --source ${f.source} --instance-dir ${f.directory} && ${helper} destroy --source ${f.source} --instance-dir ${f.directory}`,
   ])
   expect(production.message).toContain(
     `first set "deletion_protection": false in ${join(f.files, "terraform.tfvars.json")} and run ${helper} apply --source ${f.source} --instance-dir ${f.directory}.`
@@ -326,6 +326,20 @@ test("an installation whose state is in its bucket is read through the drivers",
     states: [{ root: unreadable.f.files, state: "unverified" }],
   })
   expect(existsSync(join(unreadable.f.directory, ".env"))).toBe(true)
+
+  // An init that stopped before moving the local state: the bucket is still
+  // empty, but the resources are recorded here.
+  const unmoved = bucket({ status: 0, stdout: "" })
+  writeFileSync(join(unmoved.f.files, "terraform.tfstate"), state(1))
+  expect(
+    await resetInstance(
+      { directory: unmoved.f.directory, terraform: unmoved.f.terraform, confirm: refuse },
+      unmoved.execute
+    )
+  ).toMatchObject({
+    status: "live_resources",
+    states: [{ root: unmoved.f.files, state: "live", resources: 1 }],
+  })
 
   const destroyed = bucket({ status: 0, stdout: "" })
   expect(

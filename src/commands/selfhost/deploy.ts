@@ -634,8 +634,8 @@ function keysNote(directory: string): string {
  * The arguments that run `driver` from the azad-terraform directory
  * `terraform`: the command and its arguments, then `--root` (Cloudflare's
  * root name), `--source` for the commands that deploy from the app source or
- * hold the installation's operation record (setup, refresh, plan, apply,
- * deploy, destroy and backup-keys; read-only commands take none), and
+ * hold the installation's operation record (setup, refresh, init, plan,
+ * apply, deploy, destroy and backup-keys; read-only commands take none), and
  * `--instance-dir` last.
  */
 export function driverArguments(
@@ -644,9 +644,12 @@ export function driverArguments(
   args: string[],
   options: { root?: string; source?: string; instance: string }
 ): string[] {
+  // init takes the source to move a release-0.0.x local state under the
+  // installation's operation record.
   const deploying = [
     "setup",
     "refresh",
+    "init",
     "plan",
     "apply",
     "deploy",

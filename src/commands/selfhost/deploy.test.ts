@@ -755,12 +755,11 @@ test("Cloudflare drivers run from azad-terraform with the root name, and --sourc
         f.config.directory,
       ])
       expect(call.args[call.args.indexOf("--root") + 1]).toBe(provider)
-      const deploying = call.args[2] !== "init"
-      expect(call.args.includes("--source")).toBe(deploying)
-      if (deploying)
-        expect(call.args[call.args.indexOf("--source") + 1]).toBe(
-          f.sources.source
-        )
+      // Every one of these, init too: it moves a release-0.0.x local state
+      // under the installation's operation record.
+      expect(call.args[call.args.indexOf("--source") + 1]).toBe(
+        f.sources.source
+      )
     }
     const bootstrap = calls.filter((call) => runs(call.args, "bootstrap"))
     expect(bootstrap.map((call) => call.args[2])).toEqual(
@@ -771,7 +770,7 @@ test("Cloudflare drivers run from azad-terraform with the root name, and --sourc
   }
 })
 
-test("Google Cloud drivers take no --root, and --source only for setup, plan, apply and deploy", async () => {
+test("Google Cloud drivers take no --root, and --source only for setup, init, plan, apply and deploy", async () => {
   const f = googleCloudFixture()
   await deployInstance(f.config, f.sources, f.questions, f.execute, {
     waitForClerk: false,
@@ -780,7 +779,7 @@ test("Google Cloud drivers take no --root, and --source only for setup, plan, ap
   for (const call of helper) {
     expect(call.args).not.toContain("--root")
     expect(call.args.includes("--source")).toBe(
-      ["setup", "plan", "apply", "deploy"].includes(call.args[2])
+      ["setup", "init", "plan", "apply", "deploy"].includes(call.args[2])
     )
   }
   expect(f.notes.at(-1)).not.toContain("agent_machine")

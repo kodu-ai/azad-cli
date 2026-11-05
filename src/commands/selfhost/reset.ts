@@ -176,7 +176,8 @@ export function inspectState(
  * recorded in `<files>/.terraform`), which only the drivers can read:
  * `remote` lists it through them. Earlier releases kept it in the local
  * backend at `<files>/terraform.tfstate` (non-default workspaces under
- * `<files>/workspaces`), read directly.
+ * `<files>/workspaces`), read directly; such a file still counts until init
+ * has moved it.
  */
 function inspectInstanceState(
   files: string,
@@ -188,16 +189,26 @@ function inspectInstanceState(
       ? backendRecordSchema.parse(JSON.parse(readFileSync(record, "utf8")))
           .backend
       : undefined
-    if (backend && backend.type !== "local") return remote(backend.type)
+    // A local state is counted even beside a bucket backend: an init that
+    // stopped before moving it leaves the bucket empty and the resources
+    // recorded only here.
     const states = [join(files, "terraform.tfstate")]
     const workspaces = join(files, "workspaces")
     if (present(workspaces))
       for (const name of readdirSync(workspaces))
         states.push(join(workspaces, name, "terraform.tfstate"))
-    const resources = states
+    const local = states
       .filter(present)
       .reduce((total, file) => total + localResources(file), 0)
-    return { root: files, state: resources ? "live" : "empty", resources }
+    if (!backend || backend.type === "local")
+      return { root: files, state: local ? "live" : "empty", resources: local }
+    const bucket = remote(backend.type)
+    if (bucket.state === "unverified" || !local) return bucket
+    return {
+      root: files,
+      state: "live",
+      resources: local + (bucket.resources ?? 0),
+    }
   } catch {
     return {
       root: files,
