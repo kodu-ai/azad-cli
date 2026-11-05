@@ -61,25 +61,25 @@ test("the manifest production published verifies with the pinned key, and a chan
 test("latest resolves through the pointer, and the updater unpacks privately after its digest matches", async () => {
   const { client, requested } = served()
   const release = await client.release("latest")
-  expect(release.manifest.version).toBe("4.30.0")
+  expect(release.manifest.version).toBe("5.30.0")
   const directory = join(scratch(), "launcher")
   const entry = await client.updater(release.manifest, directory)
   expect(entry).toBe(join(directory, "payload", "updater", "updater.js"))
   expect(readFileSync(entry, "utf8")).toBe("// the updater\n")
   expect(statSync(directory).mode & 0o777).toBe(0o700)
   // The archive itself is not kept.
-  expect(existsSync(join(directory, "updater-4.30.0.tar.gz"))).toBe(false)
+  expect(existsSync(join(directory, "updater-5.30.0.tar.gz"))).toBe(false)
   expect(requested).toEqual([
     "/api/v3/releases/latest.json",
-    "/api/v3/releases/4.30.0/manifest.json",
-    "/api/v3/releases/4.30.0/updater-4.30.0.tar.gz",
+    "/api/v3/releases/5.30.0/manifest.json",
+    "/api/v3/releases/5.30.0/updater-5.30.0.tar.gz",
   ])
 })
 
 test("an exact version reads its manifest without the pointer", async () => {
   const { client, requested } = served()
-  expect((await client.release("4.30.0")).manifest.version).toBe("4.30.0")
-  expect(requested).toEqual(["/api/v3/releases/4.30.0/manifest.json"])
+  expect((await client.release("5.30.0")).manifest.version).toBe("5.30.0")
+  expect(requested).toEqual(["/api/v3/releases/5.30.0/manifest.json"])
   await expect(client.release("v4.30")).rejects.toThrow("exact x.y.z")
 })
 

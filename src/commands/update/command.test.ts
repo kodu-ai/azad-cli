@@ -89,7 +89,7 @@ test("a laptop update runs the verified release's updater with the instance's st
         "--host",
         "cli",
         "--version",
-        "4.30.0",
+        "5.30.0",
         "--origin",
         "https://api.azad.pro",
         "--accept-maintenance",
@@ -116,6 +116,23 @@ test("the updater's exit code is the command's, and an instance that was never d
       trust: release.trust,
     })
   ).rejects.toThrow("has no deployed installation")
+})
+
+test("a release older than the first updater azad can run is refused before anything runs", async () => {
+  const instance = deployedInstance()
+  const release = fakeRelease(scratch(), { version: "4.20.0" })
+  const runs: string[][] = []
+  await expect(
+    updateMain(["--directory", instance.directory, "--version", "4.20.0"], {
+      fetcher: release.fetcher,
+      trust: release.trust,
+      run: async (args) => {
+        runs.push(args)
+        return { status: 0, stdout: "" }
+      },
+    })
+  ).rejects.toThrow("older than azad update can install")
+  expect(runs).toEqual([])
 })
 
 test("--status prints the installation's state beside the latest release", async () => {
@@ -145,7 +162,7 @@ test("--status prints the installation's state beside the latest release", async
             status: 0,
             stdout: JSON.stringify({
               operation: null,
-              release: { version: "4.29.0", sourceSha: "d".repeat(40), manifestSha256: null },
+              release: { version: "5.29.0", sourceSha: "d".repeat(40), manifestSha256: null },
               infrastructure: { revision: 1, capabilities: [] },
             }),
           }
@@ -158,8 +175,8 @@ test("--status prints the installation's state beside the latest release", async
   }
   expect(JSON.parse(written.join(""))).toMatchObject({
     status: "ok",
-    latest: { version: "4.30.0", sourceSha: "a".repeat(40) },
-    installed: { version: "4.29.0" },
+    latest: { version: "5.30.0", sourceSha: "a".repeat(40) },
+    installed: { version: "5.29.0" },
     operation: null,
   })
 })
@@ -167,14 +184,14 @@ test("--status prints the installation's state beside the latest release", async
 test("the status lines say what runs, what is newer and how to resume a stopped update", () => {
   expect(
     statusLines({
-      latest: { version: "4.30.0", publishedAt: "2026-11-05T01:00:00.000Z" },
+      latest: { version: "5.30.0", publishedAt: "2026-11-05T01:00:00.000Z" },
       installed: { version: null, sourceSha: "e".repeat(40) },
       operation: {
         id: "op1",
         kind: "release-update",
         status: "stopped",
         outcome: null,
-        target: { version: "4.30.0" },
+        target: { version: "5.30.0" },
         holder: null,
         error: "Wrangler failed.",
         updatedAt: "2026-11-05T01:00:00.000Z",
@@ -182,14 +199,14 @@ test("the status lines say what runs, what is newer and how to resume a stopped 
     })
   ).toEqual([
     "Installed: deployed from source eeeeeeeeeeee.",
-    "Latest: Azad 4.30.0, published 2026-11-05T01:00:00.000Z.",
-    "Stopped: release-update to 4.30.0 (operation op1): Wrangler failed. Run azad update --version 4.30.0 to resume it.",
+    "Latest: Azad 5.30.0, published 2026-11-05T01:00:00.000Z.",
+    "Stopped: release-update to 5.30.0 (operation op1): Wrangler failed. Run azad update --version 5.30.0 to resume it.",
   ])
 })
 
 test("a Cloudflare container's secrets reach the updater only as a private file, removed afterwards", async () => {
   const work = join(scratch(), "work")
-  const release = fakeRelease(scratch(), { version: "4.31.0" })
+  const release = fakeRelease(scratch(), { version: "5.31.0" })
   process.env.AZAD_INSTALL_SECRETS = JSON.stringify({
     settings: "CLOUDFLARE_API_TOKEN=secret\n",
     "release-key": "-----BEGIN PRIVATE KEY-----\n",
@@ -203,7 +220,7 @@ test("a Cloudflare container's secrets reach the updater only as a private file,
       "--store",
       JSON.stringify(store),
       "--version",
-      "4.31.0",
+      "5.31.0",
       "--executor",
       "cloudflare-container:abc",
       "--work",
@@ -247,7 +264,7 @@ test("a Cloudflare container's secrets reach the updater only as a private file,
     "--settings",
     join(work, "settings.env"),
     "--version",
-    "4.31.0",
+    "5.31.0",
     "--origin",
     "https://api.azad.pro",
     "--confirm-stopped",
@@ -260,13 +277,13 @@ test("a Cloudflare container's secrets reach the updater only as a private file,
 test("a host run needs its store, executor and an exact version; plain HTTP origins only on loopback", async () => {
   const store = JSON.stringify({ kind: "gcs", bucket: "azad-1a2b3c4d-install", project_id: "my-project" })
   await expect(
-    updateMain(["--host", "gke-job", "--store", store, "--version", "4.30.0"])
+    updateMain(["--host", "gke-job", "--store", store, "--version", "5.30.0"])
   ).rejects.toThrow("--executor")
   await expect(
     updateMain(["--host", "gke-job", "--store", store, "--version", "latest", "--executor", "j"])
   ).rejects.toThrow("exact --version")
   await expect(
-    updateMain(["--host", "gke-job", "--store", "{}", "--version", "4.30.0", "--executor", "j"])
+    updateMain(["--host", "gke-job", "--store", "{}", "--version", "5.30.0", "--executor", "j"])
   ).rejects.toThrow("Pass --store")
   await expect(updateMain(["--host", "laptop"])).rejects.toThrow("--host is")
   expect(releaseOrigin("http://127.0.0.1:8787")).toBe("http://127.0.0.1:8787")

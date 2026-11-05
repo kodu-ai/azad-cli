@@ -9,6 +9,8 @@ import { VERSION } from "../../version"
 import { instanceLocation, localPath } from "../selfhost/instance"
 import { localInstallation, parseStore } from "./installation"
 import {
+  compareVersions,
+  FIRST_UPDATER_RELEASE,
   RELEASE_ORIGIN,
   releaseClient,
   semverSchema,
@@ -164,6 +166,18 @@ function commonArguments(
   ]
 }
 
+/**
+ * @throws CliError When the release's updater predates this azad's options
+ *   ({@link FIRST_UPDATER_RELEASE}).
+ */
+function assertUpdatable(release: VerifiedRelease) {
+  const { version } = release.manifest
+  if (compareVersions(version, FIRST_UPDATER_RELEASE) < 0)
+    throw new CliError(
+      `Azad ${version} is older than azad update can install: its updater starts with Azad ${FIRST_UPDATER_RELEASE}. Choose Azad ${FIRST_UPDATER_RELEASE} or newer.`
+    )
+}
+
 const hostSchema = z.enum(["gke-job", "cloudflare-container"])
 
 /** `azad update --host …`: one run of an installation's own updater host. */
@@ -194,6 +208,7 @@ async function hostUpdate(
       trust: dependencies.trust,
     })
     const release = await client.release(values.version ?? "")
+    assertUpdatable(release)
     const entry = await client.updater(
       release.manifest,
       join(work, "launcher")
@@ -358,6 +373,7 @@ async function localUpdate(
   }
   if (values.json) throw new CliError("Use --json with --status.")
   const release = await client.release(values.version ?? "latest")
+  assertUpdatable(release)
   const entry = await client.updater(
     release.manifest,
     join(installation.work, "launcher")

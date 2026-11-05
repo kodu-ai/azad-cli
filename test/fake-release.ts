@@ -26,7 +26,7 @@ export function fakeRelease(
     publicKey.export({ format: "jwk" }).x ?? "",
     "base64url"
   ).toString("base64")
-  const version = options.version ?? "4.30.0"
+  const version = options.version ?? "5.30.0"
   const build = mkdtempSync(join(root, "build-"))
   mkdirSync(join(build, "updater"))
   writeFileSync(join(build, "updater", "updater.js"), "// the updater\n")
@@ -38,7 +38,7 @@ export function fakeRelease(
   const unsigned = {
     format: 1,
     type: "azad-release",
-    version: options.tamper === "version" ? "4.29.0" : version,
+    version: options.tamper === "version" ? "5.29.0" : version,
     sourceSha: "a".repeat(40),
     publishedAt: "2026-11-05T01:00:00.000Z",
     artifacts: {

@@ -27,6 +27,14 @@ export const UPDATER_ENTRY = join("updater", "updater.js")
 
 export const semverSchema = z.string().regex(/^\d+\.\d+\.\d+$/u)
 
+/**
+ * The first Azad release whose updater takes what this azad passes it
+ * (`--state` on a laptop, `--secrets` in a Cloudflare container). An older
+ * release's updater refuses those options before it changes anything, so
+ * such a release is refused up front, with the reason.
+ */
+export const FIRST_UPDATER_RELEASE = "4.49.0"
+
 /** Orders two `x.y.z` versions: negative when `a` is older, 0 when equal. */
 export function compareVersions(a: string, b: string): number {
   const [left, right] = [a, b].map((version) => version.split(".").map(Number))
