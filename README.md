@@ -18,7 +18,7 @@ That grabs the right build from the
 [latest release](https://github.com/kodu-ai/azad-cli/releases/latest), checks
 it against the release's `SHA256SUMS` and puts it at `~/.local/bin/azad`. If
 anything fails, nothing is installed. To pin a version or pick another folder,
-set `AZAD_VERSION=0.0.2` or `AZAD_INSTALL_DIR=/some/dir` on the `sh` side of
+set `AZAD_VERSION=0.1.0` or `AZAD_INSTALL_DIR=/some/dir` on the `sh` side of
 the pipe.
 
 Rather do it by hand? Download your build (`azad-linux-x64`,

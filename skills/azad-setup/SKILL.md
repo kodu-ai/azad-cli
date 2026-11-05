@@ -90,7 +90,7 @@ Ask only what you do not know yet:
    "$AZAD" --version && "$AZAD" --doctor
    ```
 
-   `AZAD_VERSION=0.0.2` (before `sh`) pins a release; `AZAD_INSTALL_DIR`
+   `AZAD_VERSION=0.1.0` (before `sh`) pins a release; `AZAD_INSTALL_DIR`
    chooses another directory. The deploy needs a Linux shell: on Windows, do
    everything in WSL (Ubuntu), with the checkout in WSL's own file system.
    Tell the person the full path; they run it in their own terminal.
