@@ -18,7 +18,7 @@ For Azad on Cloudflare instead, see [Install Azad on Cloudflare](install-cloudfl
 | Database | Cloud SQL for PostgreSQL. Only the Cloud SQL Auth Proxy reaches it, through the API pods' IAM identity; no network is allowlisted. Google's Cloud SQL Proxy Operator (with cert-manager) injects the proxy into the API pods. Each API pod also runs PgBouncer (transaction pooling, CloudNativePG's image), which keeps warm connections through the proxy so a request does not open its own |
 | Project repositories | Forgejo inside the cluster (official Forgejo Helm chart), reached only by the API. Cloudflare Artifacts is not used on this target |
 | HTTPS | A GKE Gateway: a regional external Application Load Balancer in the installation's region, on a regional static IP (Premium Tier), with Google-managed regional certificates (Certificate Manager, DNS authorization). TLS ends in the region, next to the cluster. Its proxies use a proxy-only subnet in the default VPC (`10.127.0.0/23` unless `proxy_only_subnet_range` says otherwise) |
-| DNS | `A` records for `<host>`, `api.<host>` and `*.apps.<host>`, the certificate validation CNAMEs and Clerk's CNAMEs, in your Cloudflare zone. The validation CNAMEs come first; the `A` records are written only once the load balancer serves all three hosts over HTTPS. Existing records are never changed |
+| DNS | `A` records for `<host>`, `api.<host>` and `*.apps.<host>`, the certificate validation CNAMEs and Clerk's CNAMEs, in your Cloudflare zone. The validation CNAMEs come first; the `A` records are written only once the load balancer serves all three hosts over HTTPS (on a first install, before anything is deployed, right away). Existing records are never changed |
 | Mini Apps | Run inside the API fleet (Worker Loader), served at `<app>.apps.<host>`. Turned off under optional settings (`AZAD_SELF_HOST_MINIAPPS=disabled`), the API has no Mini App provider and reports Mini Apps as unconfigured; the `*.apps.<host>` record and certificate stay |
 | Agent machine (optional) | One Compute Engine VM for agents, `<name>-agents`, in the size chosen at setup. It has no public address (a Cloud NAT carries its outbound traffic); only the cluster's pods reach its SSH |
 | Disk backups | Backup for GKE snapshots the `azad` namespace's disks (Forgejo and the fleets) with its Kubernetes resources, on the schedule chosen at setup |
@@ -42,7 +42,8 @@ limited to Realtime, unless you turn meetings off under optional settings.
 ## Before you start
 
 - A Google Cloud project with billing, where you can create clusters, Cloud SQL
-  instances, buckets and IAM bindings (Owner, or Editor plus Project IAM Admin).
+  instances, buckets and IAM bindings (Owner, or Editor plus Project IAM Admin,
+  Kubernetes Engine Admin and Secret Manager Secret Accessor).
 - The domain's zone in your Cloudflare account. Any hostname depth works; for
   example, `azad.team.example.com`.
 - Tools: Git, Bun 1.4.4+, Node 26.12.1+ (with npm), Terraform 1.13.4+ and the
@@ -184,12 +185,14 @@ In order:
    you confirm (the default is No). A first install has two plans, because
    everything but the cluster is planned against the cluster's API: plan 1 of
    2 creates the cluster and Clerk's DNS records, and plan 2 of 2, shown once
-   they exist, creates everything else and deploys the app. Each is confirmed
+   they exist, creates everything else; the deploy follows it. Each is confirmed
    on its own; declining applies nothing, and the next run plans the same step
    again. The first install takes about 30 minutes, mostly for the cluster,
-   the load balancer and certificate issuance. Before it writes the `A`
-   records, the apply waits (`ready_timeout_minutes`, 45 by default) until the
-   load balancer serves every host over HTTPS with a valid certificate.
+   the load balancer and certificate issuance. The first install writes the
+   `A` records right away, since nothing serves before its deploy; later
+   applies wait (`ready_timeout_minutes`, 45 by default) until the load
+   balancer serves every host over HTTPS with a valid certificate before they
+   change them.
 
 `azad --non-interactive --apply` confirms both plans, each planned in the same
 run right before its apply; `--plan` stops after showing the first.

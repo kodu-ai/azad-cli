@@ -61,7 +61,7 @@ Ask only what you do not know yet:
    | | Cloudflare | Google Cloud |
    | --- | --- | --- |
    | Runs on | Workers, Durable Objects, Pages, Hyperdrive, R2, Queues in their Cloudflare account | GKE Autopilot (celld fleets), Cloud SQL, a GCS bucket, Forgejo and a regional load balancer in their Google Cloud project; Cloudflare serves DNS only |
-   | They bring | Workers Paid plan (and R2 if files stay in R2); a database: Neon, any PostgreSQL 17+, or Cloud SQL that Terraform creates | A billed project where they are Owner, or Editor plus Project IAM Admin |
+   | They bring | Workers Paid plan (and R2 if files stay in R2); a database: Neon, any PostgreSQL 17+, or Cloud SQL that Terraform creates | A billed project where they are Owner, or Editor plus Project IAM Admin, Kubernetes Engine Admin and Secret Manager Secret Accessor |
    | Project source | Cloudflare Artifacts | Forgejo in the cluster |
    | Agent machine | Connect exe.dev or their own server per project | Optional Terraform VM, sized in the wizard |
    | First deploy | Minutes | About 30 minutes |
