@@ -17,12 +17,26 @@ type Job = {
   status?: { conditions?: { type: string; status: string; reason?: string; lastTransitionTime?: string }[] }
 }
 
-/** A cluster with the given updater Jobs that records created ones. */
-function cluster(jobs: Job[], create: { status: number } = { status: 201 }) {
+type Pod = { metadata: { deletionTimestamp?: string }; status: { phase: string } }
+
+/** A cluster with the given updater Jobs (and their pods) that records created ones. */
+function cluster(
+  jobs: Job[],
+  create: { status: number } = { status: 201 },
+  pods: Record<string, Pod[]> = {}
+) {
   const created: unknown[] = []
   const calls: string[] = []
   const kubernetes: KubernetesCall = async (method, path, body) => {
     calls.push(`${method} ${path}`)
+    const named = /\/jobs\/([^/?]+)$/u.exec(path)?.[1]
+    if (method === "GET" && named) {
+      const found = jobs.find((entry) => entry.metadata.name === named)
+      return found ? { status: 200, body: found } : { status: 404, body: {} }
+    }
+    const podsOf = /\/pods\?labelSelector=job-name%3D(.+)$/u.exec(path)?.[1]
+    if (method === "GET" && podsOf)
+      return { status: 200, body: { items: pods[decodeURIComponent(podsOf)] ?? [] } }
     if (method === "GET") return { status: 200, body: { items: jobs } }
     created.push(body)
     return { status: create.status, body: {} }
@@ -176,6 +190,47 @@ test("a stopped operation resumes, and one this host's vanished Job still holds 
   await gkeStarter(config, crashed.kubernetes, storeOf({ operation: held })).start({ version: "4.30.0", acceptMaintenance: false })
   const args = (crashed.created[0] as ReturnType<typeof import("./gke").updaterJob>).spec.template.spec.containers[0].args
   expect(args.slice(-2)).toEqual(["--confirm-stopped", "azad-update-1"])
+})
+
+test("a holder is confirmed stopped only by Kubernetes reads made after the record, never by an older Job list", async () => {
+  const held = record({
+    status: "running",
+    holder: { executor: "azad-update-a", host: "gke-job", acquiredAt: "x", heartbeatAt: "y" },
+  })
+  const input = { version: "4.30.0", acceptMaintenance: false }
+  const attempt = async (network: ReturnType<typeof cluster>) => {
+    const store = async (key: StoreKey) => {
+      network.calls.push(`store ${key}`)
+      return key === "operation" ? held : null
+    }
+    try {
+      return await gkeStarter(config, network.kubernetes, store).start(input)
+    } catch (error) {
+      return error
+    }
+  }
+  // The holder's Job still runs: busy, whatever any earlier list showed.
+  const live = cluster([job("azad-update-a", "2026-11-05T01:00:00Z")])
+  expect(await attempt(live)).toMatchObject({ status: 409, code: "busy" })
+  expect(live.created).toEqual([])
+  // Its Job failed, but its pod is still terminating.
+  const terminating = cluster([job("azad-update-a", "2026-11-05T01:00:00Z", "Failed")], undefined, {
+    "azad-update-a": [{ metadata: { deletionTimestamp: "2026-11-05T01:10:00Z" }, status: { phase: "Running" } }],
+  })
+  expect(await attempt(terminating)).toMatchObject({ status: 409, code: "busy" })
+  expect(terminating.created).toEqual([])
+  // Its Job is gone and no pod of it is left: confirmed, after reading the record.
+  const gone = cluster([])
+  const started = await attempt(gone)
+  expect(started).toMatchObject({ host: { state: "starting" } })
+  const args = (gone.created[0] as ReturnType<typeof import("./gke").updaterJob>).spec.template.spec.containers[0].args
+  expect(args.slice(-2)).toEqual(["--confirm-stopped", "azad-update-a"])
+  expect(gone.calls.slice(0, 4)).toEqual([
+    "store operation",
+    "GET /apis/batch/v1/namespaces/azad/jobs?labelSelector=app.kubernetes.io%2Fname%3Dazad-updater",
+    "GET /apis/batch/v1/namespaces/azad/jobs/azad-update-a",
+    "GET /api/v1/namespaces/azad/pods?labelSelector=job-name%3Dazad-update-a",
+  ])
 })
 
 test("the HTTP surface answers the host protocol and errors as {error:{code,message}}", async () => {

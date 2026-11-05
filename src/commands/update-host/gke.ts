@@ -275,6 +275,52 @@ export function gkeStarter(
     }
   }
 
+  const podListSchema = z.object({
+    items: z.array(
+      z.looseObject({
+        metadata: z.looseObject({ deletionTimestamp: z.string().optional() }),
+        status: z.looseObject({ phase: z.string().optional() }).optional(),
+      })
+    ),
+  })
+
+  /**
+   * Whether the Job `name` (an operation holder this starter just read) and
+   * every pod it started have ended, from Kubernetes reads made after that
+   * record was read. A Job that is gone counts only once no pod of it is
+   * left, and a pod that is still terminating has not ended: an earlier Job
+   * list never proves a holder stopped.
+   */
+  async function holderStopped(name: string): Promise<boolean> {
+    const job = await kubernetes("GET", `${jobsPath}/${encodeURIComponent(name)}`)
+    if (job.status === 200) {
+      const parsed = jobListSchema.shape.items.element.safeParse(job.body)
+      if (!parsed.success || jobView(parsed.data).active) return false
+    } else if (job.status !== 404)
+      throw new StartRefused(
+        503,
+        "unavailable",
+        `Kubernetes refused to read the updater Job ${name} (HTTP ${job.status}).`
+      )
+    const pods = await kubernetes(
+      "GET",
+      `/api/v1/namespaces/${encodeURIComponent(config.namespace)}/pods?labelSelector=${encodeURIComponent(`job-name=${name}`)}`
+    )
+    if (pods.status !== 200)
+      throw new StartRefused(
+        503,
+        "unavailable",
+        `Kubernetes refused to list the pods of ${name} (HTTP ${pods.status}).`
+      )
+    return podListSchema
+      .parse(pods.body)
+      .items.every(
+        (pod) =>
+          !pod.metadata.deletionTimestamp &&
+          (pod.status?.phase === "Succeeded" || pod.status?.phase === "Failed")
+      )
+  }
+
   const runningHolder = (operation: StoredOperation) =>
     operation?.parsed.status === "running"
       ? (operation.parsed.holder?.executor ?? null)
@@ -333,7 +379,10 @@ export function gkeStarter(
           "invalid",
           "Send {version: \"x.y.z\", acceptMaintenance: boolean}."
         )
-      const [list, record] = await Promise.all([jobs(), operation()])
+      // The record first, then Kubernetes: whatever the Jobs show was read
+      // after the holder named in the record.
+      const record = await operation()
+      const list = await jobs()
       const active = list.find((job) => job.active)
       if (active)
         throw new StartRefused(
@@ -361,7 +410,13 @@ export function gkeStarter(
               "busy",
               `Operation ${current.id} (${what}) is running on ${current.holder?.host} ${current.holder?.executor}.`
             )
-          // No updater Job is active, so the one holding it has stopped.
+          // Its own Job and pods must be seen ended after this record was read.
+          if (!(await holderStopped(current.holder.executor)))
+            throw new StartRefused(
+              409,
+              "busy",
+              `The updater Job ${current.holder.executor} has not stopped yet.`
+            )
           confirmStopped = current.holder.executor
         }
       }
