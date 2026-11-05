@@ -18,7 +18,7 @@ import type { Fetcher } from "../../http"
  * modules and the drivers that run them. Bump it, and only it, to adopt a
  * new release.
  */
-export const AZAD_TERRAFORM_VERSION = "0.2.1"
+export const AZAD_TERRAFORM_VERSION = "0.3.0"
 
 /**
  * The SHA-256 of each azad-terraform release tarball this CLI trusts, pinned
@@ -33,6 +33,7 @@ export const AZAD_TERRAFORM_SHA256: Readonly<Record<string, string>> = {
   "0.1.0": "f8c40c2c4ee67c364258523c2a58dac3469ff9ad371482c87d4dbe6df24ca0dc",
   "0.2.0": "68877306395161c4799b3fc9f2ff010d09ce64943b4cc892c7c61190886f725b",
   "0.2.1": "8f2ff89e40fd4dda062afdf0a52ff93f25748f051ec31ec9e2f7e1f50a91a5a8",
+  "0.3.0": "6c14b152d4e8a2e1c56c07477adaf89ac3882b7c0e737e73343b3752ba715bd1",
 }
 
 /** The GitHub repository that publishes azad-terraform releases. */
