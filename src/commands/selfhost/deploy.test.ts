@@ -862,3 +862,24 @@ test("--backup-keys runs the drivers' backup-keys with the deployed source, and 
     f.config.directory,
   ])
 })
+
+test("--take-over reaches every driver command that holds the operation record", async () => {
+  for (const target of ["cloudflare", "gcp"] as const) {
+    const f = target === "gcp" ? googleCloudFixture() : fixture("postgres")
+    const calls: string[][] = []
+    const execute: Run = (command, args, cwd, capture) => {
+      if (command === "bun" && args[0] === "--no-env-file") calls.push(args)
+      return f.execute(command, args, cwd, capture)
+    }
+    await deployInstance(f.config, f.sources, f.questions, execute, {
+      waitForClerk: false,
+      takeOver: "operation-1",
+    })
+    const driver = target === "gcp" ? "gcp" : "cloudflare"
+    const taking = calls
+      .filter((args) => runs(args, driver))
+      .filter((args) => args.includes("--take-over"))
+      .map((args) => args[2])
+    expect(new Set(taking)).toEqual(new Set(["init", "apply", "deploy"]))
+  }
+})

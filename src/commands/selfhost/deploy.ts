@@ -379,7 +379,7 @@ export async function deployInstance(
     questions.note(
       `Set your GitHub App's webhook secret to GITHUB_WEBHOOK_SECRET from ${config.envPath}.`
     )
-  invoke(["init"])
+  invoke(["init", ...takeOver])
   invoke(["plan", "-out=terraform.tfplan"])
   if (
     !(await questions.confirm(
@@ -724,7 +724,7 @@ async function deployGoogleCloud(
   values.AZAD_CLI_SOURCE_REVISION = revision
   values.AZAD_CLI_SOURCE = cwd
   config.save(values)
-  helper(["init", "-input=false"])
+  helper(["init", "-input=false", ...takeOver])
   const plans = helper(["phase"], true).trim() === "cluster" ? 2 : 1
   const target = `Google Cloud project ${values.AZAD_CLI_GCP_PROJECT} (${values.AZAD_CLI_GCP_REGION})`
   if (plans === 2)
