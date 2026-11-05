@@ -18,7 +18,7 @@ import type { Fetcher } from "../../http"
  * modules and the drivers that run them. Bump it, and only it, to adopt a
  * new release.
  */
-export const AZAD_TERRAFORM_VERSION = "0.0.2"
+export const AZAD_TERRAFORM_VERSION = "0.1.0"
 
 /**
  * The SHA-256 of each azad-terraform release tarball this CLI trusts, pinned
@@ -30,6 +30,7 @@ export const AZAD_TERRAFORM_VERSION = "0.0.2"
 export const AZAD_TERRAFORM_SHA256: Readonly<Record<string, string>> = {
   "0.0.1": "b997103ecb48fd97f39e4484254645efe8d08f37584826ea10b5861cc54566d4",
   "0.0.2": "d81967c03ba0320787f42ac40a9d4783f89f3bf569cfcfc848348afb1949edb4",
+  "0.1.0": "f8c40c2c4ee67c364258523c2a58dac3469ff9ad371482c87d4dbe6df24ca0dc",
 }
 
 /** The GitHub repository that publishes azad-terraform releases. */
@@ -105,7 +106,7 @@ export function driverPath(directory: string, driver: TerraformDriver): string {
   return join(directory, "scripts", `${driver}.ts`)
 }
 
-/** How a selection reads in messages: `azad-terraform 0.0.2` or the local path. */
+/** How a selection reads in messages: `azad-terraform 0.1.0` or the local path. */
 export function describeTerraform(selection: TerraformSelection): string {
   return selection.kind === "release"
     ? `azad-terraform ${selection.version}`

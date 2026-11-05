@@ -166,42 +166,49 @@ export function inspectState(
       state: "unverified",
       reason: `Terraform could not read its ${backend.type} backend; run terraform init there, then retry`,
     }
-  const resources = listed.stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line && !/(?:^|\.)data\./u.test(line)).length
+  const resources = listedResources(listed.stdout)
   return { root, state: resources ? "live" : "empty", resources }
 }
 
 /**
- * What the installation's state in the instance directory records. The
- * drivers keep it in the local backend at `<files>/terraform.tfstate`
- * (non-default workspaces under `<files>/workspaces`), which moves with the
- * directory; Terraform's record of the backend in `<files>/.terraform` is
- * only checked to be local.
+ * What the installation's Terraform state records. azad-terraform 0.1.0 and
+ * later keep it in the installation's bucket (an `s3` or `gcs` backend
+ * recorded in `<files>/.terraform`), which only the drivers can read:
+ * `remote` lists it through them. Earlier releases kept it in the local
+ * backend at `<files>/terraform.tfstate` (non-default workspaces under
+ * `<files>/workspaces`), read directly; such a file still counts until init
+ * has moved it.
  */
-function inspectInstanceState(files: string): StateCheck {
+function inspectInstanceState(
+  files: string,
+  remote: (backend: string) => StateCheck
+): StateCheck {
   try {
     const record = join(files, ".terraform", "terraform.tfstate")
     const backend = present(record)
       ? backendRecordSchema.parse(JSON.parse(readFileSync(record, "utf8")))
           .backend
       : undefined
-    if (backend && backend.type !== "local")
-      return {
-        root: files,
-        state: "unverified",
-        reason: `it records a ${backend.type} backend, which azad does not read`,
-      }
+    // A local state is counted even beside a bucket backend: an init that
+    // stopped before moving it leaves the bucket empty and the resources
+    // recorded only here.
     const states = [join(files, "terraform.tfstate")]
     const workspaces = join(files, "workspaces")
     if (present(workspaces))
       for (const name of readdirSync(workspaces))
         states.push(join(workspaces, name, "terraform.tfstate"))
-    const resources = states
+    const local = states
       .filter(present)
       .reduce((total, file) => total + localResources(file), 0)
-    return { root: files, state: resources ? "live" : "empty", resources }
+    if (!backend || backend.type === "local")
+      return { root: files, state: local ? "live" : "empty", resources: local }
+    const bucket = remote(backend.type)
+    if (bucket.state === "unverified" || !local) return bucket
+    return {
+      root: files,
+      state: "live",
+      resources: local + (bucket.resources ?? 0),
+    }
   } catch {
     return {
       root: files,
@@ -209,6 +216,14 @@ function inspectInstanceState(files: string): StateCheck {
       reason: "its Terraform state could not be read",
     }
   }
+}
+
+/** Counts the managed resources a `state list` printed; data sources are reads. */
+function listedResources(stdout: string): number {
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !/(?:^|\.)data\./u.test(line)).length
 }
 
 const varsSchema = z.looseObject({
@@ -405,8 +420,41 @@ export async function resetInstance(
   const files = deployed
     ? instanceTerraformDirectory(directory, saved)
     : undefined
+  // State in the installation's bucket is read through the drivers, which
+  // hold its backend's credentials.
+  const remoteState = (backend: string): StateCheck => {
+    const where = `${files}: its state is in the installation's ${backend === "gcs" ? "GCS" : "R2"} bucket`
+    if (!files || !terraformReady(selection))
+      return {
+        root: files ?? directory,
+        state: "unverified",
+        reason: `${where}, which azad reads through azad-terraform; rerun with --terraform-dir pointing to an azad-terraform checkout (or after a deploy has downloaded it)`,
+      }
+    const listed = execute(
+      "bun",
+      driverArguments(
+        selection.directory,
+        googleCloud ? "gcp" : "cloudflare",
+        ["state", "list"],
+        {
+          root: googleCloud ? undefined : cloudflareRoot(saved),
+          instance: directory,
+        }
+      ),
+      selection.directory,
+      true
+    )
+    if (listed.status !== 0)
+      return {
+        root: files,
+        state: "unverified",
+        reason: `${where}, which azad-terraform could not read`,
+      }
+    const resources = listedResources(listed.stdout)
+    return { root: files, state: resources ? "live" : "empty", resources }
+  }
   const workload =
-    files && present(files) ? inspectInstanceState(files) : undefined
+    files && present(files) ? inspectInstanceState(files, remoteState) : undefined
   if (workload && workload.state !== "empty") blocking.push(workload)
   const tokenRoot = join(directory, "cloudflare-bootstrap", "terraform")
   const tokens = present(tokenRoot)

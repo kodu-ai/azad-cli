@@ -86,11 +86,12 @@ export function cloudflareRoot(
 /**
  * Where the instance in `directory` keeps its Terraform root's files, as the
  * azad-terraform drivers lay them out:
- * `<directory>/terraform/<gcp-celld|cloudsql|postgres>` holds the Terraform
- * state, the variables setup writes, saved plans, Terraform's working data
- * and the deploy step's state (`installer-state` on Cloudflare,
- * `celld-install`, with the instance keys, on Google Cloud). The deploy reads
- * the private settings from `<directory>/.env` itself.
+ * `<directory>/terraform/<gcp-celld|cloudsql|postgres>` holds the variables
+ * setup writes, the state bucket's configuration, saved plans, Terraform's
+ * working data and the deploy's cache (`installer-state` on Cloudflare,
+ * `celld-install` on Google Cloud). Terraform's state, the receipts and the
+ * keys live in the installation's own cloud. The deploy reads the private
+ * settings from `<directory>/.env` itself.
  */
 export function instanceTerraformDirectory(
   directory: string,
@@ -133,6 +134,8 @@ export async function deployInstance(
     /** False skips waiting for Clerk's certificate after apply. */
     waitForClerk?: boolean
     fetcher?: Fetcher
+    /** The operation a stopped run left, confirmed stopped (`--take-over`). */
+    takeOver?: string
   } = {}
 ): Promise<
   | "missing_prerequisites"
@@ -264,11 +267,9 @@ export async function deployInstance(
       }),
       terraform
     )
-    if (result.status !== 0)
-      throw new CliError(
-        `The deployment helper stopped during ${args[0]}. Your configuration and backend state are preserved. Correct the reported problem and resume.`
-      )
+    if (result.status !== 0) throw new CliError(stoppedMessage(args[0]))
   }
+  const takeOver = options.takeOver ? ["--take-over", options.takeOver] : []
   questions.note(
     `Deploying from ${cwd} @ ${revision.slice(0, 12)} with ${describeTerraform(sources.terraform)}.`
   )
@@ -378,7 +379,7 @@ export async function deployInstance(
     questions.note(
       `Set your GitHub App's webhook secret to GITHUB_WEBHOOK_SECRET from ${config.envPath}.`
     )
-  invoke(["init"])
+  invoke(["init", ...takeOver])
   invoke(["plan", "-out=terraform.tfplan"])
   if (
     !(await questions.confirm(
@@ -392,7 +393,9 @@ export async function deployInstance(
     return "planned"
   const checks = clerkDnsChecks(values, options)
   try {
-    invoke(["apply", "terraform.tfplan"])
+    invoke(["apply", "terraform.tfplan", ...takeOver])
+    // Terraform changes only the infrastructure; the app is deployed after it.
+    invoke(["deploy", ...takeOver])
   } finally {
     checks.stop()
   }
@@ -400,7 +403,7 @@ export async function deployInstance(
     await clerkReady(values, questions, options.fetcher)
   await installGithubApp(values, questions)
   questions.note(
-    `Azad is live at https://${values.AZAD_CLI_WEB_HOST}. Sign in, then connect GitHub from your project.${nativeClientsNote(values)}\nBack up ${config.directory}: it holds this installation's settings, Terraform state and deploy state, and updates need it.`
+    `Azad is live at https://${values.AZAD_CLI_WEB_HOST}. Sign in, then connect GitHub from your project.${nativeClientsNote(values)}\n${keysNote(config.directory)}`
   )
   return "applied"
 }
@@ -568,11 +571,72 @@ async function clerkReady(
 }
 
 /**
+ * Writes an offline copy of the installation's keys to the new directory
+ * `out`, through the azad-terraform drivers' `backup-keys`: from this
+ * machine's cache of them or, on Google Cloud, from Secret Manager.
+ *
+ * @returns The directory written.
+ * @throws CliError when the instance was never deployed, has no app source
+ *   checkout, or the drivers could not write the copy.
+ */
+export async function backupKeys(
+  directory: string,
+  values: Record<string, string>,
+  sources: { source?: string; terraform: TerraformSelection },
+  out: string,
+  execute: Run = run
+): Promise<string> {
+  if (!values.AZAD_CLI_SOURCE_REVISION)
+    throw new CliError(
+      "This instance has not been deployed yet, so it has no keys to back up."
+    )
+  if (!sources.source || !existsSync(sources.source))
+    throw new CliError(
+      "Pass --source with the Azad checkout that deployed this instance."
+    )
+  const terraform = await prepareTerraform(sources.terraform, { execute })
+  const gcp = values.AZAD_CLI_TARGET === "gcp"
+  const result = execute(
+    "bun",
+    driverArguments(
+      terraform,
+      gcp ? "gcp" : "cloudflare",
+      ["backup-keys", "--out", out],
+      {
+        root: gcp ? undefined : cloudflareRoot(values),
+        source: resolve(sources.source),
+        instance: resolve(directory),
+      }
+    ),
+    terraform
+  )
+  if (result.status !== 0)
+    throw new CliError(
+      "The key backup stopped; nothing was changed. Correct the reported problem and retry."
+    )
+  return out
+}
+
+/**
+ * Why a driver command stopped, and that nothing was lost: the state lives in
+ * the installation's bucket, and a rerun resumes the same operation.
+ */
+function stoppedMessage(command: string | undefined): string {
+  return `The deployment helper stopped during ${command}. Your configuration and the installation's state are preserved. Correct the reported problem and resume.`
+}
+
+/** Where the installation's state lives, and the offline copy of its keys to keep. */
+function keysNote(directory: string): string {
+  return `Terraform's state, the receipts and the keys are in your cloud; ${directory} keeps your settings and a cache. Keep an offline copy of the keys: azad --backup-keys DIR --directory ${shellWord(directory)}`
+}
+
+/**
  * The arguments that run `driver` from the azad-terraform directory
  * `terraform`: the command and its arguments, then `--root` (Cloudflare's
- * root name), `--source` for the commands that deploy from the app source
- * (setup, refresh, plan, apply and destroy; read-only commands take none),
- * and `--instance-dir` last.
+ * root name), `--source` for the commands that deploy from the app source or
+ * hold the installation's operation record (setup, refresh, init, plan,
+ * apply, deploy, destroy and backup-keys; read-only commands take none), and
+ * `--instance-dir` last.
  */
 export function driverArguments(
   terraform: string,
@@ -580,9 +644,18 @@ export function driverArguments(
   args: string[],
   options: { root?: string; source?: string; instance: string }
 ): string[] {
-  const deploying = ["setup", "refresh", "plan", "apply", "destroy"].includes(
-    args[0]
-  )
+  // init takes the source to move a release-0.0.x local state under the
+  // installation's operation record.
+  const deploying = [
+    "setup",
+    "refresh",
+    "init",
+    "plan",
+    "apply",
+    "deploy",
+    "destroy",
+    "backup-keys",
+  ].includes(args[0])
   return [
     "--no-env-file",
     driverPath(terraform, driver),
@@ -609,7 +682,7 @@ async function deployGoogleCloud(
   checkout: { cwd: string; terraform: string; files: string; revision: string },
   questions: Questions,
   execute: Run,
-  options: { waitForClerk?: boolean; fetcher?: Fetcher }
+  options: { waitForClerk?: boolean; fetcher?: Fetcher; takeOver?: string }
 ): Promise<"planned" | "applied"> {
   const values = config.read()
   const { cwd, terraform, files, revision } = checkout
@@ -623,12 +696,10 @@ async function deployGoogleCloud(
       terraform,
       capture
     )
-    if (result.status !== 0)
-      throw new CliError(
-        `The deployment helper stopped during ${args[0]}. Your configuration and Terraform state are preserved. Correct the reported problem and resume.`
-      )
+    if (result.status !== 0) throw new CliError(stoppedMessage(args[0]))
     return result.stdout
   }
+  const takeOver = options.takeOver ? ["--take-over", options.takeOver] : []
   if (!existsSync(join(files, "terraform.tfvars.json"))) {
     const args = [
       "setup",
@@ -653,7 +724,7 @@ async function deployGoogleCloud(
   values.AZAD_CLI_SOURCE_REVISION = revision
   values.AZAD_CLI_SOURCE = cwd
   config.save(values)
-  helper(["init", "-input=false"])
+  helper(["init", "-input=false", ...takeOver])
   const plans = helper(["phase"], true).trim() === "cluster" ? 2 : 1
   const target = `Google Cloud project ${values.AZAD_CLI_GCP_PROJECT} (${values.AZAD_CLI_GCP_REGION})`
   if (plans === 2)
@@ -676,7 +747,9 @@ async function deployGoogleCloud(
       return "planned"
     const checks = clerkDnsChecks(values, options)
     try {
-      helper(["apply", "-input=false", "terraform.tfplan"])
+      helper(["apply", "-input=false", "terraform.tfplan", ...takeOver])
+      // Terraform changes only the infrastructure; the app is deployed after it.
+      if (plan === plans) helper(["deploy", ...takeOver])
     } finally {
       checks.stop()
     }
@@ -704,7 +777,7 @@ async function deployGoogleCloud(
       ? `\nYour agent machine: in project setup choose "A server over SSH" and enter the host, port and user from\n  ${output} agent_machine\nwith the private key from\n  ${output} -raw agent_machine_private_key`
       : ""
   questions.note(
-    `Azad is live at https://${values.AZAD_CLI_WEB_HOST}. Sign in, then connect GitHub from your project.${agentMachine}${nativeClientsNote(values)}\nBack up ${config.directory}: it holds this installation's settings, Terraform state and instance keys (celld-install), and updates need it.`
+    `Azad is live at https://${values.AZAD_CLI_WEB_HOST}. Sign in, then connect GitHub from your project.${agentMachine}${nativeClientsNote(values)}\n${keysNote(config.directory)}`
   )
   return "applied"
 }

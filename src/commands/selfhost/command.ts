@@ -15,7 +15,7 @@ import {
 } from "./automation"
 import { LocalConfig, readPrivateEnv } from "./config"
 import { resumeOrChangeSettings } from "./deployed-settings"
-import { deployInstance } from "./deploy"
+import { backupKeys, deployInstance } from "./deploy"
 import {
   instanceLocation,
   localPath,
@@ -66,6 +66,8 @@ const OPTIONS = {
   "settings-file": { type: "string", multiple: true },
   reset: { type: "boolean" },
   yes: { type: "boolean" },
+  "backup-keys": { type: "string" },
+  "take-over": { type: "string" },
 } as const
 
 /** Flags whose runs print exactly one JSON report on stdout, failures included. */
@@ -84,6 +86,7 @@ const HELP = [
   "  azad [--instance NAME | --directory PATH] [--source CHECKOUT] [--terraform-dir PATH]",
   "  azad --doctor [--instance NAME | --directory PATH] [--terraform-dir PATH]",
   "  azad --reset [--instance NAME | --directory PATH] [--source CHECKOUT] [--terraform-dir PATH] [--yes] [--json]",
+  "  azad --backup-keys DIR [--instance NAME | --directory PATH] [--source CHECKOUT] [--terraform-dir PATH]",
   "  azad --schema",
   "  azad --status [--instance NAME | --directory PATH] [--config FILE] [--credentials FILE]",
   "  azad --non-interactive --config FILE --credentials FILE [--instance NAME | --directory PATH] [--json]",
@@ -93,7 +96,7 @@ const HELP = [
   "",
   "Self-hosting is the default command; `azad selfhost [options]` is the same.",
   "",
-  "Each instance keeps its answers, private settings and Terraform state in its own directory: ~/.azad/instances/NAME (%USERPROFILE%\\.azad\\instances\\NAME on Windows). Without --instance the name is default; --directory PATH uses another directory instead.",
+  "Each instance keeps its answers and private settings in its own directory: ~/.azad/instances/NAME (%USERPROFILE%\\.azad\\instances\\NAME on Windows). Without --instance the name is default; --directory PATH uses another directory instead. Terraform's state, the installation's receipts and its keys live in its own cloud (a bucket and secret store the deploy creates); the directory keeps a cache.",
   "Saves private local configuration after each answer and resumes it on the next run.",
   "The first question chooses where Azad runs: Cloudflare (Workers, Pages and Hyperdrive) or your Google Cloud (GKE Autopilot, Cloud SQL and Cloud Storage, with Cloudflare for DNS).",
   "Right after it, the wizard checks the tools it needs and stops with a list of any that are missing or too old: Node.js 20+ and npm (npx) for the Clerk CLI; gcloud for the Google Cloud target and Cloud SQL; and to deploy (--source), Git, Bun 1.4.4+, Node.js 26.12.1+ and Terraform 1.13.4+.",
@@ -102,6 +105,8 @@ const HELP = [
   `Deploys run azad-terraform (https://github.com/${AZAD_TERRAFORM_REPOSITORY}): the pinned release is downloaded, verified and kept in ~/.azad/cache/azad-terraform/VERSION. --terraform-dir PATH (or AZAD_TERRAFORM_DIR) runs a local checkout instead.`,
   "Automation defaults to configuration only. Config contains non-secret JSON fields/choices; credentials are private dotenv, never command arguments.",
   "--provision-meetings sets up meetings for a running installation: it finds or creates its Cloudflare RealtimeKit app and a Realtime-only token, and writes the settings into each private settings file. Rerunning it changes nothing that is already in place.",
+  "--backup-keys DIR writes an offline copy of the installation's keys (secrets.json, release-key.pem) to the new directory DIR. Keep it off the cloud: on Cloudflare only the installation's own Worker can read the keys back.",
+  "--take-over OPERATION lets a deploy take over the operation a stopped run on another machine left, once you have confirmed that run is gone (the refusal names it).",
   "--reset deletes the instance's saved answers, private settings, Terraform variables and deploy state so the next run starts from scratch; its Terraform state stays. While Terraform still records resources for the instance it deletes nothing and prints the destroy commands to run first. Without a terminal it needs --yes.",
   "After a deployment has started, a rerun offers to resume it or to change settings first; settings the deploy fixed (target, cloud project and region, hostname, database, storage) stay as they are.",
   "",
@@ -233,6 +238,17 @@ async function selfhostMain(argv: string[]): Promise<number> {
   const file = (path: string | undefined) =>
     path === undefined ? undefined : resolve(localPath(path))
   if (values.doctor) return doctor(location, terraform)
+  if (values["backup-keys"] !== undefined) {
+    const saved = savedSettings(location.directory) ?? {}
+    // The driver prints where it wrote the keys.
+    await backupKeys(
+      location.directory,
+      saved,
+      { source: source ?? saved.AZAD_CLI_SOURCE, terraform },
+      resolve(localPath(values["backup-keys"]))
+    )
+    return 0
+  }
   if (values.yes && !values.reset)
     throw new CliError("Use --yes with --reset.")
   if (values.reset) {
@@ -345,6 +361,7 @@ async function selfhostMain(argv: string[]): Promise<number> {
             source,
             terraform,
             action,
+            takeOver: values["take-over"],
           })
     process.stdout.write(`${JSON.stringify(report)}\n`)
     return [
@@ -391,7 +408,9 @@ async function selfhostMain(argv: string[]): Promise<number> {
     await deployInstance(
       config,
       { source: deploySource, terraform },
-      questions
+      questions,
+      undefined,
+      { takeOver: values["take-over"] }
     )
   else
     terminal.note(

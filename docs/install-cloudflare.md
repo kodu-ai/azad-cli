@@ -205,6 +205,7 @@ bun --no-env-file "$TF/scripts/cloudflare.ts" setup --database-provider postgres
 bun --no-env-file "$TF/scripts/cloudflare.ts" init --root postgres --instance-dir ~/.azad/instances/default
 bun --no-env-file "$TF/scripts/cloudflare.ts" plan --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default -out=terraform.tfplan
 bun --no-env-file "$TF/scripts/cloudflare.ts" apply --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default terraform.tfplan
+bun --no-env-file "$TF/scripts/cloudflare.ts" deploy --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
 ```
 
 `setup` copies the credential file to `~/.azad/instances/default/.env` with the settings it
@@ -224,18 +225,22 @@ derives; edit that copy from then on. For Cloud SQL, use
   Remote iOS Simulator in your marketplace as Azad's apps (see
   "Official Mini Apps" in `docs/self-hosting.md` of the Azad source). If one
   fails, the deploy names the command that retries only that step.
-- **Back up** the instance directory. Updates need it.
+- **Keep an offline copy of the keys:** `azad --backup-keys ~/azad-keys`
+  writes them to a new folder. The deploy keeps them in your account's
+  Secrets Store, which only the installation's own Worker can read back.
 
-The instance directory holds everything this installation owns; the source
-checkout only provides code, and any checkout of the same revision deploys it:
+Terraform's state and the app's receipts live in your account's R2 bucket
+`<resource prefix>-install`, and the keys in its Secrets Store. The instance
+directory holds the rest; the source checkout only provides code, and any
+checkout of the same revision deploys it:
 
 - `.env`: your answers and the private settings the deploy reads.
 - The Cloudflare token you pasted and the scoped tokens it created, with their
   own Terraform state in `cloudflare-bootstrap/`.
 - `terraform/postgres/` (`terraform/cloudsql/` for Cloud SQL): the
-  installation's Terraform state, the `terraform.tfvars.json` setup wrote,
-  saved plans, Terraform's working data (`.terraform/`) and the deploy step's
-  own state (`installer-state/`).
+  `terraform.tfvars.json` setup wrote, the state bucket's configuration,
+  saved plans, Terraform's working data (`.terraform/`) and the deploy's cache
+  of the keys and receipt (`installer-state/`).
 
 ## Change settings
 
@@ -260,12 +265,16 @@ fixed setting as `immutable` and any other change as `bound_instance`.
 ```sh
 cd ~/azad-source && git pull --ff-only && bun install --frozen-lockfile
 bun --no-env-file "$TF/scripts/cloudflare.ts" refresh --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/cloudflare.ts" init --root postgres --instance-dir ~/.azad/instances/default
+bun --no-env-file "$TF/scripts/cloudflare.ts" init --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
 bun --no-env-file "$TF/scripts/cloudflare.ts" plan --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default -out=terraform.tfplan
 bun --no-env-file "$TF/scripts/cloudflare.ts" apply --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default terraform.tfplan
+bun --no-env-file "$TF/scripts/cloudflare.ts" deploy --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
 ```
 
-Use `--root cloudsql` for a Cloud SQL database. To update `azad` itself, rerun
+Use `--root cloudsql` for a Cloud SQL database. An installation made with azad
+0.0.x needs one change first: in the Cloudflare dashboard, edit its deployment
+token and add Account, Secrets Store, Edit (the value stays the same). Its
+first `init` then moves the local Terraform state into the R2 bucket. To update `azad` itself, rerun
 its install command; a newer release may pin a newer azad-terraform, which its
 next deploy downloads (`azad --doctor` prints the new `$TF`).
 
@@ -297,8 +306,8 @@ first [remove everything](#remove-everything), then:
 azad --reset --source ~/azad-source
 ```
 
-Reset reads the installation's Terraform state in the instance directory and
-the scoped tokens' state. While either still records resources it deletes
+Reset reads the installation's Terraform state (in its bucket, through
+azad-terraform) and the scoped tokens' state. While either still records resources it deletes
 nothing, lists them and prints the commands that remove them: the destroy
 above (after an `init`), with this `azad`'s azad-terraform, and, after it,
 because the destroy uses them, the scoped Cloudflare tokens:
@@ -312,8 +321,8 @@ Once nothing is recorded, it lists what it deletes and asks (default No): the
 answers and private settings, the pasted token, the scoped tokens' records and
 empty state, and, in `terraform/<root>/`, the `terraform.tfvars.json`, saved
 plans and `installer-state/`. They hold credentials, so they are deleted rather than
-backed up. The Terraform state, its backups and your cloud accounts are not
-touched; delete the Clerk
+backed up. The Terraform state, the keys in your Secrets Store and your cloud
+accounts are not touched; delete the Clerk
 application and GitHub App `azad` created in their dashboards if you no
 longer need them. A new Clerk production instance for the same hostname needs
 the old application deleted first. Without a terminal, add `--yes`; `--json`

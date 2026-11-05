@@ -199,6 +199,8 @@ export async function runAutomation(
     /** The azad-terraform drivers a deploy runs; defaults to the pinned release. */
     terraform?: TerraformSelection
     action: Exclude<AutomationAction, "schema">
+    /** The operation a stopped run left, confirmed stopped (`--take-over`). */
+    takeOver?: string
   },
   execute: Run = quietRun
 ) {
@@ -369,7 +371,7 @@ export async function runAutomation(
       },
     },
     execute,
-    { bootstrapOnly: options.action === "bootstrap" }
+    { bootstrapOnly: options.action === "bootstrap", takeOver: options.takeOver }
   )
   return { status: outcome, issues: [] }
 }

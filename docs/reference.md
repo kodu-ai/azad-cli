@@ -96,12 +96,21 @@ With `--source`, the wizard deploys after its questions:
    azad-terraform's `scripts/bootstrap.ts`, then the RealtimeKit app when
    meetings are on.
 5. Runs the target's driver: `setup` once (it writes the instance's
-   `terraform.tfvars.json`), `init`, `plan`, and, only after a confirmation
-   that defaults to No, `apply` of exactly that saved plan. A first Google
+   `terraform.tfvars.json`), `init` (it creates the installation's state
+   bucket and moves an azad 0.0.x state into it), `plan`, and, only after a
+   confirmation that defaults to No, `apply` of exactly that saved plan, then
+   `deploy`, which installs the app on that infrastructure. A first Google
    Cloud install has two plans, the cluster and Clerk's DNS records, then
-   everything else; each is shown and confirmed on its own.
-6. During each apply, asks Clerk to recheck its DNS every two minutes, then
-   waits until sign-in works and opens the GitHub App's install page.
+   everything else; each is shown and confirmed on its own, and the deploy
+   follows the second.
+6. During each apply and the deploy, asks Clerk to recheck its DNS every two
+   minutes, then waits until sign-in works and opens the GitHub App's install
+   page.
+
+`apply` and `deploy` hold the installation's operation record, so they never
+overlap a run on another machine or a release update. If a run stopped
+elsewhere, the refusal names its operation; once you have confirmed it is
+gone, rerun with `--take-over <operation id>`.
 
 Once a deployment has started (`AZAD_CLI_SOURCE_REVISION` is saved), a rerun
 asks **Resume the deployment with saved settings** (default) or **Change
@@ -141,24 +150,27 @@ The Terraform roots, modules and drivers live in
 
 The drivers run from the azad-terraform directory with `bun --no-env-file`,
 so nothing depends on the working directory. `azad` passes the app source as
-`--source` to the commands that deploy (`setup`, `refresh`, `plan`, `apply`,
-`destroy`), never to read-only ones (`init`, `show`, `output`, `state`,
-`phase`), and the instance directory last:
+`--source` to the commands that deploy or change the installation (`setup`,
+`refresh`, `plan`, `apply`, `deploy`, `destroy`, `backup-keys`) and to `init`,
+which uses it to move an azad 0.0.x local state, never to read-only ones
+(`show`, `output`, `state list`, `phase`), and the instance directory last:
 
 ```sh
 bun --no-env-file $TF/scripts/cloudflare.ts setup --database-provider postgres|cloudsql \
   --web-host HOST --credentials INSTANCE/.env --account-id ID \
   [--project-id ID --runner-cidr CIDR] --root postgres|cloudsql --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/cloudflare.ts init --root postgres|cloudsql --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/cloudflare.ts init --root postgres|cloudsql --source APP --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/cloudflare.ts plan -out=terraform.tfplan --root … --source APP --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/cloudflare.ts apply terraform.tfplan --root … --source APP --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/cloudflare.ts deploy --root … --source APP --instance-dir INSTANCE
 
 bun --no-env-file $TF/scripts/gcp.ts setup --credentials INSTANCE/.env --project-id ID --region REGION \
   --web-host HOST --account-id ID [--evaluation] [--disk-backups …] [--agent-machine …] --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/gcp.ts init -input=false --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/gcp.ts init -input=false --source APP --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/gcp.ts phase --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/gcp.ts plan -input=false -out=terraform.tfplan --source APP --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/gcp.ts apply -input=false terraform.tfplan --source APP --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/gcp.ts deploy --source APP --instance-dir INSTANCE
 
 bun --no-env-file $TF/scripts/bootstrap.ts plan|apply --config PRIVATE_JSON \
   --bootstrap-file PRIVATE_ENV --state-dir INSTANCE/cloudflare-bootstrap --source APP
@@ -176,7 +188,8 @@ release artifacts are published. The first deploy saves its path
 (`AZAD_CLI_SOURCE`) and its commit (`AZAD_CLI_SOURCE_REVISION`) in the
 instance; later runs reuse the saved path, and refuse a checkout at another
 commit. Update a running installation to a new commit with the drivers'
-`refresh`, `plan` and `apply` (see the install guides). If the source has no
+`refresh` and `deploy` (see the install guides); a deploy refuses a checkout
+older than the commit the installation runs. If the source has no
 `node_modules`, the deploy runs `bun install --frozen-lockfile` in it first.
 
 ## Instances
@@ -193,8 +206,16 @@ same flag.
 | | Instance directory (`~/.azad/instances/NAME`) |
 | --- | --- |
 | Both targets | `.env` (answers and credentials; the deploy reads it), `.cloudflare-bootstrap-credential/`, `.cloudflare-bootstrap.json`, `cloudflare-bootstrap/` (scoped tokens and their local Terraform state), `.realtimekit.json` |
-| Cloudflare | `terraform/postgres/` (Neon, other PostgreSQL) or `terraform/cloudsql/` (Cloud SQL): `terraform.tfstate`, `terraform.tfvars.json`, `terraform.tfplan`, `.terraform/` (Terraform's working data), `installer-state/` |
-| Google Cloud | `terraform/gcp-celld/`: `terraform.tfstate`, `terraform.tfvars.json`, `terraform.tfplan`, `.terraform/`, `celld-install/` (instance keys and deploy log) |
+| Cloudflare | `terraform/postgres/` (Neon, other PostgreSQL) or `terraform/cloudsql/` (Cloud SQL): `terraform.tfvars.json`, `backend.tfbackend` and `backend.json` (the state bucket), `terraform.tfplan`, `.terraform/` (Terraform's working data), `installer-state/` (a cache of the keys and receipt) |
+| Google Cloud | `terraform/gcp-celld/`: `terraform.tfvars.json`, `backend.tfbackend`, `backend.json`, `terraform.tfplan`, `.terraform/`, `celld-install/` (a cache of the keys, and the deploy log) |
+
+Terraform's state, the app's receipts and its keys live in the installation's
+own cloud: the R2 bucket `<resource prefix>-install` and the account's Secrets
+Store on Cloudflare, the GCS bucket `<name>-<project hash>-install` and the
+project's Secret Manager on Google Cloud. A deploy creates them, and moves the
+state of an installation made with azad 0.0.x there (the old local state file
+stays, renamed `terraform.tfstate.before-remote-<time>`). `azad --backup-keys
+DIR` writes an offline copy of the keys.
 
 `~/.azad` is shared with other Azad tools: azad-terraform downloads are cached
 in `~/.azad/cache/azad-terraform/`, which holds no instance data.
@@ -289,8 +310,9 @@ and their empty state, the meetings record and leftovers of interrupted
 writes, plus, in `terraform/<root>/`, the `terraform.tfvars.json`, saved plans
 and the deploy's state (`installer-state/` or `celld-install/`). These hold
 credentials, so they are deleted, not moved to a backup where secrets would
-linger. The Terraform state, its backups, `.terraform/` and `.gitignore` stay,
-and nothing in any provider account changes.
+linger. The Terraform state (in the installation's bucket, read through
+azad-terraform), local state files from azad 0.0.x, `.terraform/` and
+`.gitignore` stay, and nothing in any provider account changes.
 
 ## One Cloudflare bootstrap token
 
@@ -368,8 +390,8 @@ keys without it turns the switch on.
 - Every Terraform apply is shown as a plan first and needs an explicit yes;
   `--reset` never destroys anything itself.
 
-Keep the instance directory private and backed up: it holds credentials and
-Terraform state.
+Keep the instance directory private: it holds credentials and a copy of the
+keys. Keep the offline key copy `azad --backup-keys` writes somewhere safe.
 
 ## Neon connection security
 
