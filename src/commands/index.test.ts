@@ -18,5 +18,9 @@ test("a leading command name selects its group; no arguments or a leading option
     command: { name: "update" },
     argv: ["--status"],
   })
+  expect(selectCommand(["update-host", "gke"])).toMatchObject({
+    command: { name: "update-host" },
+    argv: ["gke"],
+  })
   expect(selectCommand(["deploy"])).toBeUndefined()
 })
