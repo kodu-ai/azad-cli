@@ -56,7 +56,8 @@ azad            # pick "Cloudflare" at the first question
 ```
 
 **On Google Cloud.** Bring a billed project where you're Owner (or Editor
-plus Project IAM Admin), a domain on Cloudflare for DNS, a Clerk account and
+plus Project IAM Admin, Kubernetes Engine Admin and Secret Manager Secret
+Accessor), a domain on Cloudflare for DNS, a Clerk account and
 a GitHub organization.
 
 ```sh
