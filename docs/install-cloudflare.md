@@ -8,9 +8,11 @@ Azad runs in your own Cloudflare account. You bring:
 - **Optionally, your own S3-compatible bucket**, such as Google Cloud Storage,
   Amazon S3, R2 or MinIO.
 
-One `terraform apply` creates the Cloudflare resources and deploys Azad. The
-`azad` setup wizard gathers the credentials Terraform cannot create and runs
-that apply with [azad-terraform](https://github.com/kodu-ai/azad-terraform).
+One `terraform apply` creates the Cloudflare resources, and a deploy step
+installs Azad on them. The `azad` setup wizard gathers the credentials
+Terraform cannot create, downloads the signed Azad release and runs both with
+[azad-terraform](https://github.com/kodu-ai/azad-terraform). You need no
+access to Azad's source code.
 
 To run Azad on your own Google Cloud instead, see
 [Install Azad on your Google Cloud](install-google-cloud.md). The Terraform
@@ -24,9 +26,9 @@ details for this target are in azad-terraform's README.
 | Web app | A Pages project on `<host>` |
 | Database connection | Hyperdrive, to your database's direct endpoint |
 | Files and Agent Connect releases | This installation's R2 buckets, or your own bucket (`STORAGE_*` settings) |
-| Mini Apps | Workers and D1 databases in your account |
+| Mini Apps (unless you choose Not now) | Inside the API Worker, on their own domain: each app is a Dynamic Worker with a SQLite Durable Object as its database, at `<app>.<Mini Apps domain>` |
 | Managed project source (optional) | Cloudflare Artifacts |
-| DNS | Clerk's CNAMEs and one Worker-free route per Board hostname, so a zone-wide wildcard route never serves another Worker on them |
+| DNS | Clerk's CNAMEs, one Worker-free route per Board hostname (so a zone-wide wildcard route never serves another Worker on them), and the Mini Apps domain's wildcard record, route and certificate |
 
 Names derive from the API hostname, so several installations can share one
 account.
@@ -35,6 +37,15 @@ account.
 
 - A Cloudflare account on the Workers Paid plan that holds your domain's zone.
   If files stay in R2, enable R2 too.
+- A domain for Mini Apps in the same account, apart from Azad's hostname
+  (not the hostname, not under it and not containing it):
+  - a separate zone, such as `example-apps.com`; or
+  - a subdomain of one of the account's zones, such as `apps.example.com`.
+    Turn on Cloudflare's Advanced Certificate Manager for that zone: Terraform
+    orders the subdomain's wildcard certificate there.
+
+  You can also skip Mini Apps (**Not now**); the domain cannot be added later
+  without starting over.
 - A database, unless you choose Cloud SQL:
   - PostgreSQL 17+, reachable from Cloudflare and from the machine you install
     from.
@@ -42,15 +53,15 @@ account.
   - For Neon, use the direct endpoint. `azad` switches a pasted pooler URL
     automatically.
   - Leave room for Hyperdrive's 20 connections.
-- Tools: Git, Bun 1.4.4+, Node 26.12.1+ (with npm) and Terraform 1.13.4+; for
-  Cloud SQL, also the [gcloud CLI](https://cloud.google.com/sdk/docs/install).
-  Run `azad --doctor` to list any that are missing. Cloud SQL deploys need Google
-  Application Default Credentials: `azad` signs you in with
+- Tools: Bun 1.4.4+, Terraform 1.13.4+, curl and tar, and Node.js 20+ with
+  npm for the Clerk CLI; for Cloud SQL, also the
+  [gcloud CLI](https://cloud.google.com/sdk/docs/install). Run `azad --doctor`
+  to list any that are missing. Cloud SQL deploys need Google Application
+  Default Credentials: `azad` signs you in with
   `gcloud auth login --update-adc` when it picks the project, and stops
   before changing anything if they are missing.
-- On Windows, install from WSL (Ubuntu), with the Azad source checkout in
-  WSL's own file system rather than under `/mnt/c`: the deploy's Terraform
-  steps need a Linux shell.
+- On Windows, install from WSL (Ubuntu): the deploy's Terraform steps need a
+  Linux shell.
 
 ## Install with azad
 
@@ -62,28 +73,29 @@ directories and Windows):
 curl -fsSL https://github.com/kodu-ai/azad-cli/releases/latest/download/install.sh | sh
 ```
 
-Deploys run from a checkout of the Azad app source until its release
-artifacts are published. Clone it (read access to the repository is needed)
-and install its dependencies:
-
-```sh
-git clone git@github.com:kodu-ai/azad-ide-web.git ~/azad-source
-cd ~/azad-source && bun install --frozen-lockfile
-```
-
 Then run:
 
 ```sh
-azad --source ~/azad-source
+azad
 ```
 
-The first deploy downloads the azad-terraform release this `azad` pins,
-checks its SHA-256 and keeps it in `~/.azad/cache/azad-terraform/<version>/`
-(`azad --doctor` prints the version and the directory). The commands further
-down call that directory `$TF`:
+The deploy downloads two things, checks them and keeps them:
+
+- The latest Azad release (or the one `--version x.y.z` names), from
+  `https://api.azad.pro/api/v3/releases/`. Its manifest must carry a valid
+  signature by the key this `azad` pins, and every file must match the
+  manifest. It is kept in `~/.azad/cache/releases/<version>/`, which the
+  commands below call `$R`.
+- The azad-terraform release this `azad` pins, checked against its SHA-256,
+  in `~/.azad/cache/azad-terraform/<version>/`, which the commands below call
+  `$TF`.
+
+`azad --doctor` prints the azad-terraform directory and, once an instance
+has deployed, the release it records:
 
 ```sh
 TF=~/.azad/cache/azad-terraform/<version>
+R=~/.azad/cache/releases/<Azad version>
 ```
 
 Your answers and private settings are kept in the instance directory
@@ -120,10 +132,17 @@ In order:
      and paste it. If the form shows no permission, use the **Create
      additional tokens** template instead.
    - `azad` finds your account from the hostname's zone.
-   - It then creates narrowly scoped tokens: one to deploy, one for Mini Apps and,
-     with managed source, two for Artifacts and its events.
+   - It then creates narrowly scoped tokens: one to deploy, which also covers
+     the zone of your Mini Apps domain, and, with managed source, two for
+     Artifacts and its events.
    - Your token is used for nothing else.
-5. **Clerk:**
+5. **Where should Mini Apps run?**
+   - **On their own domain** (the default, recommended): enter the Mini Apps
+     domain from [Before you start](#before-you-start). `azad` looks it up in
+     your account and asks again if no zone there holds it. For a subdomain
+     it reminds you to turn on Advanced Certificate Manager.
+   - **Not now**: Mini Apps stay off.
+6. **Clerk:**
    - Sign in through the official Clerk CLI.
    - `azad` creates the application and its production instance, turns on
      sign-in by emailed code, and adds the official clients' redirect URLs and
@@ -134,46 +153,48 @@ In order:
      its decisions.
    - It creates the webhook for user sync. It asks for the signing secret only
      if Clerk refuses.
-6. **GitHub App:** enter the GitHub organization that owns the App (Enter for
+7. **GitHub App:** enter the GitHub organization that owns the App (Enter for
    your own account), then click **Create GitHub App** on the pre-filled page
    `azad` opens. After the deploy, `azad` opens the App's install
    page: install it on your organization, and `azad` confirms it.
-7. **Would you like to enable Sign in with Google?** (default no; asked when
+8. **Would you like to enable Sign in with Google?** (default no; asked when
    `azad` created the Clerk application). If yes, create a **Web application**
    OAuth client on the Google Cloud page `azad` opens, with Clerk's
    redirect URI from your clipboard, and click **Download JSON**. `azad`
    reads and deletes the file, checks the client with Google and configures
    Clerk. Then click **Publish app** on the Audience page it opens.
-8. **Will people use the Azad desktop or mobile apps?** (default yes): turn on
+9. **Will people use the Azad desktop or mobile apps?** (default yes): turn on
    **Native API** on the Clerk page `azad` opens. Clerk has no API for
    this setting.
-9. **Configure optional settings?** (default no). `azad` first prints
+10. **Configure optional settings?** (default no). `azad` first prints
    the defaults that apply without it:
-   - Mini Apps on.
-   - Meetings on: the deploy creates a Cloudflare RealtimeKit app and a token
-     limited to Realtime.
-   - Managed project repositories on Cloudflare Artifacts, with tokens
-     `azad` creates. New projects need them.
-   - Files and Agent Connect releases in this installation's R2 buckets.
+    - Mini Apps on your Mini Apps domain, or off.
+    - Meetings on: the deploy creates a Cloudflare RealtimeKit app and a token
+      limited to Realtime.
+    - Managed project repositories on Cloudflare Artifacts, with tokens
+      `azad` creates. New projects need them.
+    - Files and Agent Connect releases in this installation's R2 buckets.
 
-   Answering yes asks, in order: Mini Apps, managed project source, meetings,
-   where uploaded files go (this installation's R2 buckets, or your R2, GCS or
-   S3 bucket), email through Resend, an existing RealtimeKit app, OpenAI
-   meeting titles, GIFs through Klipy, and branding, error reporting and
-   runtime settings.
+    Answering yes asks, in order: managed project source, meetings, where
+    uploaded files go (this installation's R2 buckets, or your R2, GCS or S3
+    bucket), email through Resend, an existing RealtimeKit app, OpenAI
+    meeting titles, GIFs through Klipy, and branding, error reporting and
+    runtime settings.
 
 Then `azad` deploys:
 
 1. It creates the scoped tokens.
-2. azad-terraform's `scripts/cloudflare.ts setup` writes the Terraform
-   variables into the instance directory. Your credentials stay in its private
-   `.env`.
-3. It shows the Terraform plan.
-4. After you confirm, it applies the plan:
-   1. Terraform creates Clerk's DNS records and the hostname routes.
-   2. Terraform runs the Azad installer. It waits for Clerk, checks the database
-      and the storage bucket, and runs migrations.
-   3. It deploys the API Worker and the web app.
+2. It downloads and verifies the release (see above).
+3. azad-terraform's `scripts/cloudflare.ts setup` writes the Terraform
+   variables into the instance directory, with the Mini Apps domain
+   (`--miniapps-domain`). Your credentials stay in its private `.env`.
+4. It shows the Terraform plan.
+5. After you confirm, it applies the plan: Terraform creates Clerk's DNS
+   records, the hostname routes and the Mini Apps domain's record, route and
+   certificate.
+6. The deploy step runs the release's installer. It waits for Clerk, checks
+   the database and the storage bucket, runs migrations, and deploys the API
+   Worker and the web app.
 
 While the apply runs, `azad` keeps asking Clerk to check its DNS. It
 finishes when sign-in works, then prints your URL.
@@ -195,18 +216,23 @@ directory.
 azad-terraform's README has the full reference and an example credential
 file. Every command names the instance directory that keeps this
 installation's settings, Terraform state and variables, and the commands that
-deploy name the Azad source checkout; azad-terraform and the checkout only
-provide code. For an existing database:
+deploy name the release directory `$R`; azad-terraform and the release only
+provide code. `azad` downloads and verifies `$R` on its first deploy run; a
+release directory you build yourself must have the same layout (see the
+[reference](reference.md#releases)). For an existing database:
 
 ```sh
 bun --no-env-file "$TF/scripts/cloudflare.ts" setup --database-provider postgres \
   --web-host azad.example.com --credentials /private/azad.env \
-  --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/cloudflare.ts" init --root postgres --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/cloudflare.ts" plan --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default -out=terraform.tfplan
-bun --no-env-file "$TF/scripts/cloudflare.ts" apply --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default terraform.tfplan
-bun --no-env-file "$TF/scripts/cloudflare.ts" deploy --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
+  --miniapps-domain example-apps.com \
+  --root postgres --release "$R" --instance-dir ~/.azad/instances/default
+bun --no-env-file "$TF/scripts/cloudflare.ts" init --root postgres --release "$R" --instance-dir ~/.azad/instances/default
+bun --no-env-file "$TF/scripts/cloudflare.ts" plan --root postgres --release "$R" --instance-dir ~/.azad/instances/default -out=terraform.tfplan
+bun --no-env-file "$TF/scripts/cloudflare.ts" apply --root postgres --release "$R" --instance-dir ~/.azad/instances/default terraform.tfplan
+bun --no-env-file "$TF/scripts/cloudflare.ts" deploy --root postgres --release "$R" --instance-dir ~/.azad/instances/default
 ```
+
+`--miniapps-domain none` deploys without Mini Apps.
 
 `setup` copies the credential file to `~/.azad/instances/default/.env` with the settings it
 derives; edit that copy from then on. For Cloud SQL, use
@@ -221,20 +247,20 @@ derives; edit that copy from then on. For Cloud SQL, use
 - **Desktop and mobile apps:** turn on **Native API** in Clerk's dashboard, on
   the Native applications page. `azad` prints the exact link. Clerk has no
   API for this setting.
-- **Official Mini Apps:** every deploy lists PartyTask, Release Queue and
-  Remote iOS Simulator in your marketplace as Azad's apps (see
-  "Official Mini Apps" in `docs/self-hosting.md` of the Azad source). If one
-  fails, the deploy names the command that retries only that step.
+- **Official Mini Apps:** with Mini Apps on, every deploy lists PartyTask,
+  Release Queue and Remote iOS Simulator in your marketplace as Azad's apps.
+  If one fails, the deploy names the command that retries only that step.
 - **Keep an offline copy of the keys:** `azad --backup-keys ~/azad-keys`
   writes them to a new folder. The deploy keeps them in your account's
   Secrets Store, which only the installation's own Worker can read back.
 
 Terraform's state and the app's receipts live in your account's R2 bucket
 `<resource prefix>-install`, and the keys in its Secrets Store. The instance
-directory holds the rest; the source checkout only provides code, and any
-checkout of the same revision deploys it:
+directory holds the rest; the release in `~/.azad/cache/releases/` only
+provides code:
 
-- `.env`: your answers and the private settings the deploy reads.
+- `.env`: your answers, the private settings the deploy reads, and the
+  release it deploys (`AZAD_CLI_RELEASE_VERSION`, `AZAD_CLI_RELEASE_SHA`).
 - The Cloudflare token you pasted and the scoped tokens it created, with their
   own Terraform state in `cloudflare-bootstrap/`.
 - `terraform/postgres/` (`terraform/cloudsql/` for Cloud SQL): the
@@ -244,18 +270,20 @@ checkout of the same revision deploys it:
 
 ## Change settings
 
-Rerun `azad --source ~/azad-source` with the same instance. Once a deployment
-has started it asks **Resume the deployment with saved settings** (the
-default) or **Change settings, then deploy**. Changing walks the questions
+Rerun `azad` with the same instance. Once a deployment has started it asks
+**Resume the deployment with saved settings** (the default) or **Change
+settings, then deploy**. Changing walks the questions
 again with your saved answers filled in; Enter keeps each one. A changed
 setting is saved to the instance directory's `.env`, which the deploy reads,
 and the deploy shows the Terraform plan (a redeploy of the API and web app)
-before it asks to apply.
+before it asks to apply. It deploys the release the installation runs now:
+the newer of the one the instance recorded and the one the installation's
+receipt names, so a console update or `azad update` is never rolled back.
 
 Settings the first deploy fixed are shown, not asked: the target, the database
 and its connection, the hostname and Cloudflare account, where files are
-stored, and Mini Apps and managed project source, which the scoped tokens were
-created for. Changing one would replace the installation or move its data, so
+stored, the Mini Apps domain and managed project source, which the scoped
+tokens were created for. Changing one would replace the installation or move its data, so
 it means destroying the installation and [starting over](#start-over).
 `azad --non-interactive` never changes a deployed instance: it reports a
 fixed setting as `immutable` and any other change as `bound_instance`.
@@ -263,37 +291,45 @@ fixed setting as `immutable` and any other change as `bound_instance`.
 ## Update
 
 ```sh
-cd ~/azad-source && git pull --ff-only && bun install --frozen-lockfile
-bun --no-env-file "$TF/scripts/cloudflare.ts" refresh --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/cloudflare.ts" init --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/cloudflare.ts" plan --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default -out=terraform.tfplan
-bun --no-env-file "$TF/scripts/cloudflare.ts" apply --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default terraform.tfplan
-bun --no-env-file "$TF/scripts/cloudflare.ts" deploy --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
+azad update            # the release azad.pro runs now
+azad update --status   # what runs, and what is newer
 ```
 
-Use `--root cloudsql` for a Cloud SQL database. An installation made with azad
-0.0.x needs one change first: in the Cloudflare dashboard, edit its deployment
-token and add Account, Secrets Store, Edit (the value stays the same). Its
-first `init` then moves the local Terraform state into the R2 bucket. To update `azad` itself, rerun
-its install command; a newer release may pin a newer azad-terraform, which its
-next deploy downloads (`azad --doctor` prints the new `$TF`).
+`azad update` installs a published release without Terraform (see
+[Updates](reference.md#updates)). When a release needs new infrastructure it
+stops before changing anything; then run
+
+```sh
+azad --version <x.y.z>
+```
+
+which downloads and verifies that release, records it in the Terraform
+variables (`refresh`), shows the plan, applies it after your yes and deploys
+the release. A release older than the one the installation runs is refused.
+
+To update `azad` itself, rerun its install command. A newer `azad` may pin a
+newer azad-terraform, which its next deploy downloads (`azad --doctor`
+prints the new `$TF`).
 
 ## Remove everything
 
 ```sh
-bun --no-env-file "$TF/scripts/cloudflare.ts" destroy --root postgres --source ~/azad-source --instance-dir ~/.azad/instances/default
+bun --no-env-file "$TF/scripts/cloudflare.ts" destroy --root postgres --release "$R" --instance-dir ~/.azad/instances/default
 ```
+
+Use the release the installation runs (`azad --doctor` names it, and
+`azad --reset` prints this command with its directory).
 
 Before Terraform deletes its own resources, an uninstall step removes what the
 Azad installer step created, in this order:
 
 1. The API Worker, with its custom domain and queue consumer.
-2. Mini App Workers and their D1 databases.
-3. This installation's Artifacts repositories.
-4. Its event subscriptions.
-5. The Pages project and domain.
-6. The Hyperdrive.
-7. The contents of this installation's R2 buckets.
+2. This installation's Artifacts repositories.
+3. Its event subscriptions.
+4. The Pages project and domain.
+5. The Hyperdrive.
+6. The contents of this installation's R2 buckets, which also hold the Mini
+   Apps' releases and database snapshots.
 
 Nothing else in a shared account is touched.
 
@@ -303,13 +339,14 @@ To set up a new installation from scratch with the same instance directory,
 first [remove everything](#remove-everything), then:
 
 ```sh
-azad --reset --source ~/azad-source
+azad --reset
 ```
 
 Reset reads the installation's Terraform state (in its bucket, through
 azad-terraform) and the scoped tokens' state. While either still records resources it deletes
 nothing, lists them and prints the commands that remove them: the destroy
-above (after an `init`), with this `azad`'s azad-terraform, and, after it,
+above (after an `init`), with this `azad`'s azad-terraform and the release
+the installation runs (downloaded first if it is not cached), and, after it,
 because the destroy uses them, the scoped Cloudflare tokens:
 
 ```sh

@@ -1,7 +1,8 @@
 # azad self-hosting reference
 
 How `azad` (and `azad selfhost`, the same command) sets up, deploys and
-maintains a self-hosted Azad, in detail. Start with the
+maintains a self-hosted Azad, in detail. It installs signed public Azad
+releases; no access to Azad's source code is needed. Start with the
 [README](../README.md) and the install guides for
 [Cloudflare](install-cloudflare.md) and [Google Cloud](install-google-cloud.md).
 
@@ -34,26 +35,37 @@ will ask for.
    installation. The account is found from the hostname's zone with a
    ten-minute Zone Read token that is revoked afterwards. A rejected token
    (HTTP status shown, never the value) is asked for again.
-5. **Clerk** through the official Clerk CLI (`npx clerk@4.0.0`): browser
+5. **Where should Mini Apps run?** (Cloudflare only.) **On their own domain**
+   (default) asks for `AZAD_CLI_MINIAPPS_DOMAIN`: a separate zone of the
+   account (`example-apps.com`) or a subdomain inside one of its zones
+   (`apps.example.com`, which needs Advanced Certificate Manager on that zone
+   for the wildcard certificate Terraform orders). It must not be, contain or
+   sit under the web or API host. With the bootstrap token at hand the wizard
+   looks the domain up (again with a short-lived Zone Read token) and asks
+   again when no zone of the account holds it. **Not now** saves `none`. On
+   Google Cloud Mini Apps run at `*.apps.<hostname>` and nothing is asked.
+6. **Clerk** through the official Clerk CLI (`npx clerk@4.0.0`): browser
    sign-in, then the application, production instance, email-code sign-in,
    native redirects and allowed origins. When the CLI cannot start (offline,
    or the npm registry is blocked), the wizard says so and asks for the keys
    instead.
-6. **GitHub App** through GitHub's App manifest flow: the owning organization
+7. **GitHub App** through GitHub's App manifest flow: the owning organization
    (Enter for your account), then a local page posts the manifest, and GitHub
    returns the App ID, client secret, private key and webhook secret.
-7. **Would you like to enable Sign in with Google?** (opt-in, default no) and
+8. **Would you like to enable Sign in with Google?** (opt-in, default no) and
    **Will people use the Azad desktop or mobile apps?** (default yes). Both
    are asked only when the wizard created the Clerk app. Automation answers
    them with the `googleSignIn` and `nativeApps` choices.
-8. **Configure optional settings?** (default no), after a line listing the
-   defaults that apply without it: Mini Apps on, meetings on (the deploy finds
-   or creates the Cloudflare RealtimeKit app `azad-<first label of the
-   hostname>` and a token limited to Realtime; its value-free record is
-   `.realtimekit.json` in the instance directory), managed project source on
-   Cloudflare Artifacts (Cloudflare only), daily disk backups (Google Cloud),
-   and this installation's bucket for files. Yes asks for each of those, then
-   email, an existing RealtimeKit app, media, branding and runtime settings.
+9. **Configure optional settings?** (default no), after a line listing the
+   defaults that apply without it: Mini Apps (on Cloudflare as answered
+   above; on Google Cloud on, and only there a yes can turn them off),
+   meetings on (the deploy finds or creates the Cloudflare RealtimeKit app
+   `azad-<first label of the hostname>` and a token limited to Realtime; its
+   value-free record is `.realtimekit.json` in the instance directory),
+   managed project source on Cloudflare Artifacts (Cloudflare only), daily
+   disk backups (Google Cloud), and this installation's bucket for files. Yes
+   asks for each of those, then email, an existing RealtimeKit app, media,
+   branding and runtime settings.
 
 The Clerk webhook for user sync is created automatically through Clerk's
 Backend API and the instance's Svix app. If any step is refused, the wizard
@@ -74,6 +86,9 @@ Still manual:
 - **Cloudflare token:** one click on Cloudflare's pre-filled token form, then
   pasting the token.
 - **Neon:** you paste the connection string from an existing project.
+- **Domains:** the Cloudflare account, the zone of the hostname and, on
+  Cloudflare, the Mini Apps domain (and Advanced Certificate Manager for a
+  subdomain) are set up in Cloudflare's dashboard beforehand.
 
 Provider pages open after a cancellable three-second countdown; Ctrl+C stops
 before the browser opens. Valid saved answers keep with Enter and do not
@@ -82,27 +97,26 @@ reopen pages. A complete saved configuration needs one confirmation to deploy
 
 ## Deploy
 
-With `--source`, the wizard deploys after its questions:
+After its questions, plain `azad` deploys:
 
 1. Checks the deployment tools again and, for Google Cloud and Cloud SQL,
    Google Application Default Credentials.
-2. Checks that `--source` is a Git checkout with a readable commit, that it is
-   the commit the instance is bound to (if a deploy already started), and that
-   it contains the features the saved settings need (verified database TLS,
-   automatic Neon certificate registration, token bootstrap) with
-   `git merge-base --is-ancestor`.
-3. Prepares azad-terraform (see [azad-terraform](#azad-terraform)).
+2. Refuses Terraform variables that belong to another installation (another
+   hostname, account or project).
+3. Prepares the release (see [Releases](#releases)) and azad-terraform (see
+   [azad-terraform](#azad-terraform)).
 4. Creates the scoped Cloudflare tokens after a confirmation, through
    azad-terraform's `scripts/bootstrap.ts`, then the RealtimeKit app when
    meetings are on.
 5. Runs the target's driver: `setup` once (it writes the instance's
-   `terraform.tfvars.json`), `init` (it creates the installation's state
-   bucket and moves an azad 0.0.x state into it), `plan`, and, only after a
-   confirmation that defaults to No, `apply` of exactly that saved plan, then
-   `deploy`, which installs the app on that infrastructure. A first Google
-   Cloud install has two plans, the cluster and Clerk's DNS records, then
-   everything else; each is shown and confirmed on its own, and the deploy
-   follows the second.
+   `terraform.tfvars.json`; on Cloudflare with `--miniapps-domain`), `refresh`
+   when the release's commit differs from the one the variables record,
+   `init` (it creates the installation's state bucket), `plan`, and, only
+   after a confirmation that defaults to No, `apply` of exactly that saved
+   plan, then `deploy`, which runs the release's installer on that
+   infrastructure. A first Google Cloud install has two plans, the cluster
+   and Clerk's DNS records, then everything else; each is shown and
+   confirmed on its own, and the deploy follows the second.
 6. During each apply and the deploy, asks Clerk to recheck its DNS every two
    minutes, then waits until sign-in works and opens the GitHub App's install
    page.
@@ -112,16 +126,77 @@ overlap a run on another machine or a release update. If a run stopped
 elsewhere, the refusal names its operation; once you have confirmed it is
 gone, rerun with `--take-over <operation id>`.
 
-Once a deployment has started (`AZAD_CLI_SOURCE_REVISION` is saved), a rerun
-asks **Resume the deployment with saved settings** (default) or **Change
+Once a deployment has started (the instance's `.env` records
+`AZAD_CLI_RELEASE_VERSION` and `AZAD_CLI_RELEASE_SHA`), a rerun asks
+**Resume the deployment with saved settings** (default) or **Change
 settings, then deploy**. Settings the deploy fixed are printed as read-only
 lines and never asked: the target, database and connection, Google Cloud
 project and region, Cloud SQL runner network, hostname, Cloudflare account and
 access mode, storage, Google Cloud sizing, agent machine and disk backups, and
-on Cloudflare Mini Apps and managed source. Changing one would replace
-infrastructure or move data, so it takes a destroy and `--reset`.
+on Cloudflare the Mini Apps domain and managed source. Changing one would
+replace infrastructure or move data, so it takes a destroy and `--reset`.
 Noninteractive runs never change a deployed instance: every difference is a
 `bound_instance` issue, and a fixed setting is also reported as `immutable`.
+
+## Releases
+
+A deploy installs one Azad release, given to every driver command as a
+release directory (`--release DIR`):
+
+```text
+<release>/
+  release.json                 {"format":1,"version","sourceSha","signed","agentConnect"}
+  manifest.json                the signed manifest, verbatim (public releases)
+  agent-connect-manifest.json  its Agent Connect manifest, verbatim (public releases)
+  updater-<version>.tar.gz     the archives, kept (public releases)
+  web-<version>.tar.gz
+  payload/                     the unpacked updater artifact, with installer/*.js
+  web/                         the unpacked web build
+```
+
+**Public releases.** `azad` reads `latest.json` and the release's
+`manifest.json` from `https://api.azad.pro/api/v3/releases/`, checks the
+manifest's Ed25519 signature against the key it pins (never one the server
+names) and the pointer's digest, then downloads the updater, the web build and
+the Agent Connect manifest and checks each one's size and SHA-256 against the
+manifest. It unpacks into a fresh private directory, writes `release.json`
+last and moves it to `~/.azad/cache/releases/<version>/`. The updater comes
+first: a release whose `payload.json` lists no `installer/cloudflare-install.js`
+is refused, naming the first release that has the installer
+(`FIRST_INSTALLER_RELEASE`, 4.497.0), before its web build is downloaded.
+`AZAD_RELEASE_ORIGIN` points `azad` at another origin (tests); the pinned key
+stays the same.
+
+**Cache.** A cached release is used again only while it verifies: its
+manifest's signature, both archives and the Agent Connect manifest against
+it, and `release.json`. An exact version is checked offline; `latest` reads
+the pointer first. The unpacked trees are not checked (the installer adds to
+`payload/`, for example Wrangler under `payload/runtime/`); when one is
+missing it is unpacked again, fresh, from the verified archive. Anything that
+does not verify is downloaded again.
+
+**Which release.**
+
+- A new install: the latest release, or `--version x.y.z`.
+- An existing install (re-deploy, change settings, `--backup-keys`,
+  `--reset`): the release it runs now. That is the newer of the one the
+  instance recorded and the one the installation's receipt names (a console
+  update or `azad update` moves it past the recorded one). The receipt is read
+  with the recorded release's own updater (`updater.js status`), as
+  `azad update --status` reads it; before the deploy created the
+  installation's bucket, or when the receipt cannot be read (said so), the
+  recorded release is used, and the installer still refuses to deploy over a
+  newer one.
+- `--version x.y.z` on an existing install moves it to that newer release; an
+  older one is refused before anything is downloaded.
+
+**Local builds** (development). `--source CHECKOUT` runs
+`bun --no-env-file CHECKOUT/scripts/self-host/local-release.ts --out DIR` in
+an empty directory (after `bun install --frozen-lockfile` when the checkout
+has no `node_modules`), and keeps the unsigned result as
+`~/.azad/cache/releases/local-<sourceSha>/`. When Git reads a clean checkout
+whose commit is already built, that build is used again. A local build is
+refused over an installation that runs a newer release.
 
 ## azad-terraform
 
@@ -149,48 +224,37 @@ The Terraform roots, modules and drivers live in
   is ready; it never downloads.
 
 The drivers run from the azad-terraform directory with `bun --no-env-file`,
-so nothing depends on the working directory. `azad` passes the app source as
-`--source` to the commands that deploy or change the installation (`setup`,
-`refresh`, `plan`, `apply`, `deploy`, `destroy`, `backup-keys`) and to `init`,
-which uses it to move an azad 0.0.x local state, never to read-only ones
+so nothing depends on the working directory. `azad` passes the release
+directory as `--release` to the commands that deploy or change the
+installation or hold its operation record (`setup`, `refresh`, `init`,
+`plan`, `apply`, `deploy`, `destroy`, `backup-keys`), never to read-only ones
 (`show`, `output`, `state list`, `phase`), and the instance directory last:
 
 ```sh
 bun --no-env-file $TF/scripts/cloudflare.ts setup --database-provider postgres|cloudsql \
-  --web-host HOST --credentials INSTANCE/.env --account-id ID \
-  [--project-id ID --runner-cidr CIDR] --root postgres|cloudsql --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/cloudflare.ts init --root postgres|cloudsql --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/cloudflare.ts plan -out=terraform.tfplan --root … --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/cloudflare.ts apply terraform.tfplan --root … --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/cloudflare.ts deploy --root … --source APP --instance-dir INSTANCE
+  --web-host HOST --credentials INSTANCE/.env --account-id ID --miniapps-domain ZONE|none \
+  [--project-id ID --runner-cidr CIDR] --root postgres|cloudsql --release RELEASE --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/cloudflare.ts init --root postgres|cloudsql --release RELEASE --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/cloudflare.ts plan -out=terraform.tfplan --root … --release RELEASE --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/cloudflare.ts apply terraform.tfplan --root … --release RELEASE --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/cloudflare.ts deploy --root … --release RELEASE --instance-dir INSTANCE
 
 bun --no-env-file $TF/scripts/gcp.ts setup --credentials INSTANCE/.env --project-id ID --region REGION \
-  --web-host HOST --account-id ID [--evaluation] [--disk-backups …] [--agent-machine …] --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/gcp.ts init -input=false --source APP --instance-dir INSTANCE
+  --web-host HOST --account-id ID [--evaluation] [--disk-backups …] [--agent-machine …] --release RELEASE --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/gcp.ts init -input=false --release RELEASE --instance-dir INSTANCE
 bun --no-env-file $TF/scripts/gcp.ts phase --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/gcp.ts plan -input=false -out=terraform.tfplan --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/gcp.ts apply -input=false terraform.tfplan --source APP --instance-dir INSTANCE
-bun --no-env-file $TF/scripts/gcp.ts deploy --source APP --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/gcp.ts plan -input=false -out=terraform.tfplan --release RELEASE --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/gcp.ts apply -input=false terraform.tfplan --release RELEASE --instance-dir INSTANCE
+bun --no-env-file $TF/scripts/gcp.ts deploy --release RELEASE --instance-dir INSTANCE
 
 bun --no-env-file $TF/scripts/bootstrap.ts plan|apply --config PRIVATE_JSON \
-  --bootstrap-file PRIVATE_ENV --state-dir INSTANCE/cloudflare-bootstrap --source APP
+  --bootstrap-file PRIVATE_ENV --state-dir INSTANCE/cloudflare-bootstrap --release RELEASE
 ```
 
-`azad` owns the prompts, local credential entry, packaging and source
-selection; azad-terraform owns provider lookup, Terraform, the deploy step and
-its state, and validates the source itself. `azad` never duplicates that
-logic.
-
-## The Azad app source
-
-Deploys need `--source`, a Git checkout of the Azad app source, until app
-release artifacts are published. The first deploy saves its path
-(`AZAD_CLI_SOURCE`) and its commit (`AZAD_CLI_SOURCE_REVISION`) in the
-instance; later runs reuse the saved path, and refuse a checkout at another
-commit. Update a running installation to a new commit with the drivers'
-`refresh` and `deploy` (see the install guides); a deploy refuses a checkout
-older than the commit the installation runs. If the source has no
-`node_modules`, the deploy runs `bun install --frozen-lockfile` in it first.
+`azad` owns the prompts, local credential entry, and choosing, verifying and
+caching the release; azad-terraform owns provider lookup, Terraform, the
+deploy step and its state, and reads the release directory itself. `azad`
+never duplicates that logic.
 
 ## Updates
 
@@ -216,7 +280,8 @@ Google Cloud needs gcloud's Application Default Credentials, as a deploy does.
 
 An update never runs Terraform. A release that needs new infrastructure, a
 newer azad or a newer azad-terraform stops before it changes anything and says
-so; update azad and rerun `azad --source CHECKOUT` first. A release whose
+so; update azad if needed, then run `azad --version x.y.z`, which plans,
+applies (after your yes) and deploys that release. A release whose
 migrations cannot run while the API serves is a maintenance release: pass
 `--accept-maintenance` to accept the downtime. The installation's operation
 record is the same lock deploys take, so an update and a deploy never run at
@@ -257,21 +322,24 @@ state of an installation made with azad 0.0.x there (the old local state file
 stays, renamed `terraform.tfstate.before-remote-<time>`). `azad --backup-keys
 DIR` writes an offline copy of the keys.
 
-`~/.azad` is shared with other Azad tools: azad-terraform downloads are cached
-in `~/.azad/cache/azad-terraform/`, which holds no instance data.
+`~/.azad` is shared with other Azad tools. Downloads are cached outside the
+instances and hold no instance data: Azad releases in
+`~/.azad/cache/releases/` (see [Releases](#releases)) and azad-terraform in
+`~/.azad/cache/azad-terraform/`.
 
 ## Tools
 
 The `azad` executable embeds its runtime, but the wizard runs the Clerk CLI
 through npx, so it needs Node.js 20+ and npm (npx), unless Clerk keys entered
 by hand are already saved. The Google Cloud target and Cloud SQL need gcloud.
-Deploys also need Git, Bun 1.4.4+, Node.js 26.12.1+ and Terraform 1.13.4+.
-The wizard checks these right after the target question and stops with one
-line per missing or too-old tool:
+Deploys need Bun 1.4.4+ (the drivers, installer and updater run on it),
+Terraform 1.13.4+, curl and tar; no Git and no newer Node.js. The wizard
+checks these right after the target question and stops with one line per
+missing or too-old tool:
 
 ```text
 These tools are missing or too old. Please install them, then run azad again:
-- Node.js 26.12.1 or newer (found 22.11.0): https://nodejs.org/en/download
+- Bun 1.4.4 or newer (found 1.3.1): https://bun.sh/docs/installation
 - Terraform 1.13.4 or newer (not installed): https://developer.hashicorp.com/terraform/install
 ```
 
@@ -297,8 +365,7 @@ with `~` and may be quoted, as Windows' "Copy as path" does. On Windows:
   its access list, which admits only your account, Administrators and SYSTEM.
 - The deploy needs a Linux shell (its Terraform steps run bash, and Google
   Cloud's `celld` has no Windows build): configure on Windows if you like,
-  but deploy from WSL, with the checkout and instance in WSL's own file
-  system.
+  but deploy from WSL, with the instance in WSL's own file system.
 
 Linux builds target glibc; Alpine/musl is not supported. x64 builds use Bun's
 baseline runtime (no AVX2 needed). A Google Cloud deploy runs `celld`, which
@@ -328,19 +395,20 @@ rerun changes nothing that is already in place. Redeploy to apply them.
 
 ## Start over
 
-`azad --reset [--instance NAME | --directory PATH] [--source CHECKOUT]
-[--terraform-dir PATH]` clears an instance so the next run starts from
+`azad --reset [--instance NAME | --directory PATH] [--terraform-dir PATH]`
+clears an instance so the next run starts from
 scratch. It first reads the installation's state in `terraform/<root>/` and
 the scoped tokens' state in `cloudflare-bootstrap/terraform`: local state
 files directly, a configured remote backend of the tokens through
 `terraform state list`. While either records resources, or cannot be read, it
 deletes nothing, exits 1 and prints the commands that remove them: the
-target's `init` and `destroy` with this `azad`'s azad-terraform and the saved
-source (or `--source` when it moved), with the deletion-protection step for
-production Google Cloud and Cloud SQL, then the tokens'
+target's `init` and `destroy` with this `azad`'s azad-terraform and the
+release the installation runs (prepared as a deploy prepares it, so it may be
+downloaded), with the deletion-protection step for production Google Cloud
+and Cloud SQL, then the tokens'
 `terraform -chdir=<instance>/cloudflare-bootstrap/terraform destroy` with a
-token that can edit API tokens. It never downloads, runs a destroy or calls a
-provider. Otherwise it lists the files and asks (default No); without a
+token that can edit API tokens. It never runs a destroy or changes anything
+in a provider account. Otherwise it lists the files and asks (default No); without a
 terminal it needs `--yes`, and `--json` prints one status: `reset_complete`,
 `needs_confirmation`, `live_resources`, `state_unverified` or
 `nothing_to_reset`.
@@ -364,9 +432,12 @@ access. The terminal masks it and saves it separately at
 file); the instance's `.env` holds only its path.
 
 During a deploy, azad-terraform's `scripts/bootstrap.ts` (with its
-`roots/bootstrap`) creates the scoped deployment token and, as selected, the
-Mini Apps runtime token and the Artifacts and Queues tokens for managed
-project source. `azad` writes the non-secret request to a private temporary
+`roots/bootstrap`) creates the scoped deployment token and, with managed
+project source, the Artifacts and Queues tokens. The request names the web and
+API hosts and, on Cloudflare, the Mini Apps domain (`miniAppsDomain`), so the
+deployment token also covers the zone that holds it; it never asks for a
+Mini Apps token (`miniApps: false`). The request's `revision` is the release's
+commit, and the driver runs with `--release`. `azad` writes the non-secret request to a private temporary
 file, passes the bootstrap token's file path (never the value), checks the
 helper's value-free result, receipt, Terraform token IDs and values, and
 merges only the derived credentials into the instance's `.env`. Missing or
@@ -380,9 +451,9 @@ without the administrator token, which may be revoked.
 azad --schema
 azad --status --config setup.json --credentials /private/azad.env
 azad --non-interactive --config setup.json --credentials /private/azad.env --json
-azad --non-interactive --create-tokens --source ~/azad-source --json
-azad --non-interactive --plan --source ~/azad-source --json
-azad --non-interactive --apply --source ~/azad-source --json
+azad --non-interactive --create-tokens --json
+azad --non-interactive --plan --json
+azad --non-interactive --apply --json       # --version x.y.z for another release
 ```
 
 Each prints one JSON status. `--schema` lists every field and choice, marks
@@ -390,7 +461,10 @@ secrets and gives defaults. The config holds only non-secret `fields` and
 `choices`; secrets come from the private `--credentials` dotenv (never
 arguments). For the token bootstrap, `choices.cloudflareAuth: "bootstrap"`
 with the non-secret field `AZAD_CLI_CLOUDFLARE_BOOTSTRAP_FILE` pointing to a
-separate private dotenv holding only `CLOUDFLARE_BOOTSTRAP_API_TOKEN`.
+separate private dotenv holding only `CLOUDFLARE_BOOTSTRAP_API_TOKEN`. On
+Cloudflare, `fields.AZAD_CLI_MINIAPPS_DOMAIN` names the Mini Apps domain
+(choice `miniApps: "domain"`, the default), or `choices.miniApps: "none"`
+turns Mini Apps off.
 
 `--create-tokens` creates only the scoped credentials and returns
 `bootstrap_complete`. On a fresh bootstrap, `--plan` returns
@@ -398,7 +472,7 @@ separate private dotenv holding only `CLOUDFLARE_BOOTSTRAP_API_TOKEN`.
 `--apply` authorizes both the bootstrap and the workload apply; every plan it
 applies is made in the same run right before its apply, so a plan saved by an
 earlier run is never applied. The optional-settings switch `optionalSettings`
-guards `diskBackups`, `miniapps`, `managedSource`, `enableMeetings`,
+guards `diskBackups`, `miniapps` (Google Cloud), `managedSource`, `enableMeetings`,
 `storage`, `optionalServices` and `advanced`; a config that sets any of those
 keys without it turns the switch on.
 
@@ -427,6 +501,10 @@ keys without it turns the switch on.
 - `install.sh` downloads over HTTPS only and installs nothing unless the
   executable matches the release's `SHA256SUMS`; the azad-terraform tarball
   must match its release checksum and this `azad`'s pin.
+- An Azad release is used only after its manifest's Ed25519 signature
+  verifies against the key this `azad` pins and every downloaded file matches
+  the manifest's size and SHA-256, on every use of the cache too. A local
+  build (`--source`) is marked unsigned.
 - Every Terraform apply is shown as a plan first and needs an explicit yes;
   `--reset` never destroys anything itself.
 
