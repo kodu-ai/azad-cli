@@ -36,7 +36,17 @@ esac
 if [ "$os-$arch" = darwin-x64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = 1 ]; then
   arch=arm64
 fi
-if [ "$os" = linux ] && ls /lib/ld-musl-* >/dev/null 2>&1; then
+# Whether any of the given paths (unexpanded globs never exist) is present.
+any_exists() {
+  for path in "$@"; do
+    [ -e "$path" ] && return 0
+  done
+  return 1
+}
+# A musl loader alone means Alpine or a similar system; glibc systems can have
+# the musl package installed beside glibc, and those run azad.
+if [ "$os" = linux ] && any_exists /lib/ld-musl-* &&
+  ! any_exists /lib64/ld-linux-* /lib/ld-linux-* /lib/*-linux-gnu*/ld-linux-*; then
   fail "azad's Linux builds need glibc; Alpine and other musl systems are not supported."
 fi
 
