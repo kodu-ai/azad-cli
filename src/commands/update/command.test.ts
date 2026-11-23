@@ -11,7 +11,8 @@ import {
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { fakeRelease } from "../../../test/fake-release"
-import { releaseOrigin, statusLines, updateMain } from "./command"
+import { releaseOrigin } from "../../release/signed"
+import { statusLines, updateMain } from "./command"
 
 const roots: string[] = []
 afterEach(() => {

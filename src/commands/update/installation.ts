@@ -1,9 +1,10 @@
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { z } from "zod"
 import { CliError } from "../../error"
 import { readPrivateEnv } from "../selfhost/config"
-import { instanceTerraformDirectory } from "../selfhost/deploy"
+import { instanceTerraformDirectory } from "../selfhost/instance"
+import type { RunUpdater } from "./run"
 
 /**
  * Where an installation keeps its state in its own cloud, as azad-terraform
@@ -103,5 +104,66 @@ export function localInstallation(directory: string): LocalInstallation {
     stateDirectory: deployment.state_directory,
     handoffFile: existsSync(handoff) ? handoff : undefined,
     work: join(directory, "update"),
+  }
+}
+
+/** What the updater's `status` prints: the receipt, the current or last operation. */
+export const statusSchema = z.looseObject({
+  operation: z
+    .looseObject({
+      id: z.string(),
+      kind: z.string(),
+      status: z.string(),
+      outcome: z.string().nullable(),
+      target: z.looseObject({ version: z.string() }).nullable(),
+      holder: z
+        .looseObject({
+          executor: z.string(),
+          host: z.string(),
+          heartbeatAt: z.string(),
+        })
+        .nullable(),
+      error: z.string().nullable(),
+      updatedAt: z.string(),
+    })
+    .nullable(),
+  release: z
+    .looseObject({ version: z.string().nullable(), sourceSha: z.string() })
+    .nullable(),
+  infrastructure: z.unknown(),
+})
+export type InstallationStatus = z.infer<typeof statusSchema>
+
+/**
+ * Reads the installation's receipt and operation record from its store with
+ * the updater at `entry` (`updater.js status`); changes nothing.
+ *
+ * @throws CliError When the updater fails or prints a status this azad cannot read.
+ */
+export async function readInstallationStatus(
+  installation: LocalInstallation,
+  entry: string,
+  run: RunUpdater
+): Promise<InstallationStatus> {
+  mkdirSync(installation.work, { recursive: true, mode: 0o700 })
+  const result = await run(
+    [
+      entry,
+      "status",
+      "--store",
+      JSON.stringify(installation.store),
+      "--settings",
+      installation.settingsFile,
+    ],
+    { cwd: installation.work, capture: true }
+  )
+  if (result.status !== 0)
+    throw new CliError(
+      "Reading the installation's status failed; the reason is above."
+    )
+  try {
+    return statusSchema.parse(JSON.parse(result.stdout))
+  } catch {
+    throw new CliError("The updater printed a status this azad cannot read.")
   }
 }

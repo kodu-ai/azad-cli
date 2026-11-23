@@ -9,9 +9,9 @@ import {
 } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { CliError } from "../../error"
-import { fakeRelease } from "../../../test/fake-release"
-import { releaseClient, verifyManifest } from "./release"
+import { CliError } from "../error"
+import { fakeRelease } from "../../test/fake-release"
+import { releaseClient, verifyManifest } from "./signed"
 
 const roots: string[] = []
 afterEach(() => {
@@ -43,7 +43,7 @@ test("the manifest production published verifies with the pinned key, and a chan
   // signed by the app's release workflow: proves this canonical form and
   // verification match the signer's.
   const bytes = readFileSync(
-    join(import.meta.dir, "../../../test/fixtures/release-4.26.1-manifest.json")
+    join(import.meta.dir, "../../test/fixtures/release-4.26.1-manifest.json")
   )
   expect(sha256(bytes)).toBe(
     "4c1a59f515df428ba03eb11609da944eda50a7aba221659891899522a375f1ac"

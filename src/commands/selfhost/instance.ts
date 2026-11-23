@@ -95,3 +95,41 @@ export function rerunCommand(
     )
     .join(" ")
 }
+
+/**
+ * The azad-terraform root `cloudflare.ts --root` deploys for these settings:
+ * `cloudsql` for a Cloud SQL database, `postgres` for Neon or other
+ * PostgreSQL. (`gcp.ts` has a single root, `gcp-celld`.)
+ */
+export function cloudflareRoot(
+  values: Record<string, string>
+): "cloudsql" | "postgres" {
+  return values.AZAD_CLI_DATABASE_PROVIDER === "cloudsql"
+    ? "cloudsql"
+    : "postgres"
+}
+
+/**
+ * Where the instance in `directory` keeps its Terraform root's files, as the
+ * azad-terraform drivers lay them out:
+ * `<directory>/terraform/<gcp-celld|cloudsql|postgres>` holds the variables
+ * setup writes, the state bucket's configuration, saved plans, Terraform's
+ * working data and the deploy's cache (`installer-state` on Cloudflare,
+ * `celld-install` on Google Cloud). Terraform's state, the receipts and the
+ * keys live in the installation's own cloud. The deploy reads the private
+ * settings from `<directory>/.env` itself.
+ */
+export function instanceTerraformDirectory(
+  directory: string,
+  values: Record<string, string>
+): string {
+  return join(
+    resolve(directory),
+    "terraform",
+    values.AZAD_CLI_TARGET === "gcp"
+      ? "gcp-celld"
+      : values.AZAD_CLI_DATABASE_PROVIDER === "cloudsql"
+        ? "cloudsql"
+        : "postgres"
+  )
+}
