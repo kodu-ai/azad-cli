@@ -7,16 +7,29 @@ import { CliError } from "../../error"
 import type { Fetcher } from "../../http"
 import { VERSION } from "../../version"
 import { instanceLocation, localPath } from "../selfhost/instance"
-import { localInstallation, parseStore } from "./installation"
 import {
   compareVersions,
-  FIRST_UPDATER_RELEASE,
-  RELEASE_ORIGIN,
   releaseClient,
+  releaseOrigin,
   semverSchema,
+  type ReleaseKey,
   type VerifiedRelease,
-} from "./release"
+} from "../../release/signed"
+import {
+  localInstallation,
+  parseStore,
+  readInstallationStatus,
+  type InstallationStatus,
+} from "./installation"
 import { runUpdater, type RunUpdater } from "./run"
+
+/**
+ * The first Azad release whose updater takes what this azad passes it
+ * (`--state` on a laptop, `--secrets` in a Cloudflare container). An older
+ * release's updater refuses those options before it changes anything, so
+ * such a release is refused up front, with the reason.
+ */
+export const FIRST_UPDATER_RELEASE = "4.49.0"
 
 const OPTIONS = {
   help: { type: "boolean", short: "h" },
@@ -42,7 +55,7 @@ const HELP = [
   "  azad update --status [--instance NAME | --directory PATH] [--json]",
   "  azad update --host gke-job|cloudflare-container --store JSON --version x.y.z --executor ID [--work DIR] [--accept-maintenance] [--confirm-stopped EXECUTOR]",
   "",
-  "Downloads the release's signed manifest from api.azad.pro, checks its signature against the key this azad pins, downloads the release's updater and checks it against the manifest, then runs it on this machine. The updater installs the release, and any release it must install first, along the upgrade path the release declares. It never changes infrastructure: when a release needs a new resource, it stops before changing anything and asks you to run azad --source CHECKOUT first.",
+  "Downloads the release's signed manifest from api.azad.pro, checks its signature against the key this azad pins, downloads the release's updater and checks it against the manifest, then runs it on this machine. The updater installs the release, and any release it must install first, along the upgrade path the release declares. It never changes infrastructure: when a release needs a new resource, it stops before changing anything; then run azad --version x.y.z, which applies the release's infrastructure and deploys it.",
   "Without --version it installs the release azad.pro runs now (latest).",
   "The instance must have been deployed with this machine's azad (its state bucket, settings and key cache are read from the instance directory). Bun 1.4.4 or newer runs the updater; on Google Cloud, gcloud's Application Default Credentials reach the installation.",
   "--accept-maintenance accepts the downtime of a release whose migrations cannot run while the API serves; without it such an update stops before changing anything.",
@@ -67,27 +80,6 @@ function parseOptions(argv: string[]) {
           : "Unknown option. Run azad update --help for usage."
     )
   }
-}
-
-/**
- * The release origin: `--origin`, then AZAD_RELEASE_ORIGIN, then
- * api.azad.pro. Plain HTTP is accepted only on this machine, for tests.
- */
-export function releaseOrigin(value: string | undefined): string {
-  const origin = value ?? process.env.AZAD_RELEASE_ORIGIN ?? RELEASE_ORIGIN
-  let url: URL
-  try {
-    url = new URL(origin)
-  } catch {
-    throw new CliError("--origin must be an https:// origin.")
-  }
-  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
-  if (
-    url.origin !== origin.replace(/\/$/u, "") ||
-    !(url.protocol === "https:" || (url.protocol === "http:" && loopback))
-  )
-    throw new CliError("--origin must be an https:// origin.")
-  return url.origin
 }
 
 /** The secret names an updater host may hand the updater (the app's `installSecretNames`). */
@@ -145,7 +137,7 @@ type Dependencies = {
   fetcher?: Fetcher
   run?: RunUpdater
   /** Replaces the pinned release keys (tests). */
-  trust?: readonly { id: string; publicKey: string }[]
+  trust?: readonly ReleaseKey[]
 }
 
 /** The updater arguments both modes pass the same way. */
@@ -239,36 +231,11 @@ async function hostUpdate(
   }
 }
 
-const statusSchema = z.looseObject({
-  operation: z
-    .looseObject({
-      id: z.string(),
-      kind: z.string(),
-      status: z.string(),
-      outcome: z.string().nullable(),
-      target: z.looseObject({ version: z.string() }).nullable(),
-      holder: z
-        .looseObject({
-          executor: z.string(),
-          host: z.string(),
-          heartbeatAt: z.string(),
-        })
-        .nullable(),
-      error: z.string().nullable(),
-      updatedAt: z.string(),
-    })
-    .nullable(),
-  release: z
-    .looseObject({ version: z.string().nullable(), sourceSha: z.string() })
-    .nullable(),
-  infrastructure: z.unknown(),
-})
-
 /** One line per fact of `azad update --status`. */
 export function statusLines(report: {
   latest: { version: string; publishedAt: string }
-  installed: z.infer<typeof statusSchema>["release"]
-  operation: z.infer<typeof statusSchema>["operation"]
+  installed: InstallationStatus["release"]
+  operation: InstallationStatus["operation"]
 }): string[] {
   const { latest, installed, operation } = report
   const lines = [
@@ -285,7 +252,7 @@ export function statusLines(report: {
       operation.status === "running"
         ? `Running: ${what} (operation ${operation.id}) on ${operation.holder?.host} ${operation.holder?.executor}, last seen ${operation.holder?.heartbeatAt}.`
         : operation.status === "stopped"
-          ? `Stopped: ${what} (operation ${operation.id})${operation.error ? `: ${operation.error}` : "."} Run azad update${operation.target ? ` --version ${operation.target.version}` : " --source CHECKOUT"} to resume it.`
+          ? `Stopped: ${what} (operation ${operation.id})${operation.error ? `: ${operation.error}` : "."} Run ${operation.target ? `azad update --version ${operation.target.version}` : "azad"} to resume it.`
           : `Last operation: ${what} (operation ${operation.id}), ${operation.outcome} at ${operation.updatedAt}.`
     )
   }
@@ -333,27 +300,7 @@ async function localUpdate(
       latest.manifest,
       join(installation.work, "launcher")
     )
-    const result = await run(
-      [
-        entry,
-        "status",
-        "--store",
-        JSON.stringify(installation.store),
-        "--settings",
-        installation.settingsFile,
-      ],
-      { cwd: installation.work, capture: true }
-    )
-    if (result.status !== 0)
-      throw new CliError(
-        "Reading the installation's status failed; the reason is above."
-      )
-    let status: z.infer<typeof statusSchema>
-    try {
-      status = statusSchema.parse(JSON.parse(result.stdout))
-    } catch {
-      throw new CliError("The updater printed a status this azad cannot read.")
-    }
+    const status = await readInstallationStatus(installation, entry, run)
     const report = {
       latest: {
         version: latest.manifest.version,

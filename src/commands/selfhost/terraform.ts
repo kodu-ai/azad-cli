@@ -18,7 +18,7 @@ import type { Fetcher } from "../../http"
  * modules and the drivers that run them. Bump it, and only it, to adopt a
  * new release.
  */
-export const AZAD_TERRAFORM_VERSION = "0.3.0"
+export const AZAD_TERRAFORM_VERSION = "0.4.0"
 
 /**
  * The SHA-256 of each azad-terraform release tarball this CLI trusts, pinned
@@ -34,7 +34,12 @@ export const AZAD_TERRAFORM_SHA256: Readonly<Record<string, string>> = {
   "0.2.0": "68877306395161c4799b3fc9f2ff010d09ce64943b4cc892c7c61190886f725b",
   "0.2.1": "8f2ff89e40fd4dda062afdf0a52ff93f25748f051ec31ec9e2f7e1f50a91a5a8",
   "0.3.0": "6c14b152d4e8a2e1c56c07477adaf89ac3882b7c0e737e73343b3752ba715bd1",
+  "0.4.0": "53037501f73d80867a2141959efb242404e5fc2a8d1a5c0adc786a261202de81",
 }
+
+/** True for a pin that is a SHA-256 digest, not a placeholder. */
+const isDigest = (pin: string | undefined): pin is string =>
+  pin !== undefined && /^[a-f0-9]{64}$/u.test(pin)
 
 /** The GitHub repository that publishes azad-terraform releases. */
 export const AZAD_TERRAFORM_REPOSITORY = "kodu-ai/azad-terraform"
@@ -234,7 +239,7 @@ export async function prepareTerraform(
   const top = `azad-terraform-${version}`
   const fetcher = options.fetcher ?? fetch
   const pinned = (options.pins ?? AZAD_TERRAFORM_SHA256)[version]
-  if (!pinned)
+  if (!isDigest(pinned))
     throw new CliError(
       `This azad release pins no checksum for azad-terraform ${version}, so it cannot verify the download. Nothing was installed; install an azad release that pins it, or point --terraform-dir at a local azad-terraform checkout.`
     )

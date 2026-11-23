@@ -19,8 +19,8 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
         handler.chmod(0o755)
     env = {"HOME": scratch, "PATH": str(transport) + ":" + os.environ.get("PATH", "/usr/bin:/bin"), "AZAD_BROWSER_LOG": str(browser_log)}
 
-    def run(*args, success=True):
-        process = subprocess.run([*command, *args], cwd=root, env=env,
+    def run(*args, success=True, path=None):
+        process = subprocess.run([*command, *args], cwd=root, env={**env, **({"PATH": path} if path else {})},
                                  capture_output=True, text=True, timeout=20)
         assert (process.returncode == 0) == success, process.stdout
         assert "fixture-secret" not in process.stdout + process.stderr
@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
     assert not instance.exists()
     config = root / "config.json"
     config.write_text(json.dumps({
-        "choices": {"database": "postgres", "miniapps": False},
+        "choices": {"database": "postgres", "miniApps": "none"},
         "fields": {"AZAD_CLI_WEB_HOST": "board.example.com",
                    "CLOUDFLARE_ACCOUNT_ID": "b" * 32,
                    "CLERK_PUBLISHABLE_KEY": "pk_fixture", "GITHUB_APP_ID": "123"}
@@ -62,7 +62,9 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
     assert "fixture-secret-pem" in checkpoint.read_text()
     assert run("--status", "--directory", str(instance))["status"] == "configuration_ready"
     assert checkpoint.stat().st_mtime_ns == before.st_mtime_ns
-    assert run("--non-interactive", "--plan", "--directory", str(instance), success=False)["status"] == "backend_unavailable"
+    # A plan needs no checkout; it stops at the tools a deploy needs (Bun, Terraform, curl, tar).
+    planned = run("--non-interactive", "--plan", "--directory", str(instance), success=False, path=str(transport))
+    assert planned["status"] == "missing_prerequisites", planned
     # Without --directory the instance lives in the home folder: default, or --instance NAME.
     home_common = ["--config", str(config), "--credentials", str(credentials)]
     assert run("--non-interactive", *home_common)["status"] == "configuration_saved"
@@ -95,7 +97,8 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
     admin.chmod(0o600)
     credentials.write_text("\n".join(line for line in credentials.read_text().splitlines() if not line.startswith("CLOUDFLARE_API_TOKEN=")) + "\n")
     data["choices"]["cloudflareAuth"] = "bootstrap"
-    data["choices"]["miniapps"] = True
+    data["choices"]["miniApps"] = "domain"
+    data["fields"]["AZAD_CLI_MINIAPPS_DOMAIN"] = "apps.example.com"
     data["fields"]["AZAD_CLI_CLOUDFLARE_BOOTSTRAP_FILE"] = str(admin)
     config.write_text(json.dumps(data))
     boot = root / "bootstrap-instance"
@@ -106,10 +109,11 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
     assert run("--non-interactive", *common)["status"] == "configuration_saved"
     normal = (boot / ".env").read_text()
     assert "fixture-secret-root" not in normal and "CLOUDFLARE_BOOTSTRAP_API_TOKEN" not in normal
-    assert "V3_CF_API_TOKEN" not in normal
-    assert run("--non-interactive", "--create-tokens", "--directory", str(boot), success=False)["status"] == "backend_unavailable"
+    assert "V3_CF_API_TOKEN" not in normal and "AZAD_CLI_MINIAPPS_DOMAIN='apps.example.com'" in normal
+    tokens = run("--non-interactive", "--create-tokens", "--directory", str(boot), success=False, path=str(transport))
+    assert tokens["status"] == "missing_prerequisites", tokens
     # Once a deploy has started, a setting it fixed cannot change; the report names it.
-    (boot / ".env").write_text(normal + f"AZAD_CLI_SOURCE_REVISION='{'a' * 40}'\n")
+    (boot / ".env").write_text(normal + f"AZAD_CLI_RELEASE_VERSION='5.30.0'\nAZAD_CLI_RELEASE_SHA='{'a' * 40}'\n")
     data["fields"]["AZAD_CLI_WEB_HOST"] = "other.example.com"
     config.write_text(json.dumps(data))
     refused = run("--non-interactive", *common, success=False)
@@ -133,8 +137,10 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
         path.write_text(f'#!/bin/sh\necho "{output}"\n')
         path.chmod(0o755)
 
-    for name, output in {"git": "git version 2.50.0", "bun": "1.4.4", "node": "v26.12.1",
-                         "npx": "11.6.2", "terraform": "Terraform v1.13.4"}.items():
+    # No Git: a deploy installs a release. Node.js and npx run the Clerk CLI.
+    for name, output in {"bun": "1.4.4", "node": "v22.11.0", "npx": "11.6.2",
+                         "terraform": "Terraform v1.13.4", "curl": "curl 8.5.0",
+                         "tar": "tar (GNU tar) 1.35"}.items():
         tool(name, output)
 
     def doctor():
@@ -144,10 +150,12 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
     checked = doctor()
     assert checked.returncode == 0 and not checked.stderr, checked
     cache = root / ".azad" / "cache" / "azad-terraform"
+    releases = root / ".azad" / "cache" / "releases"
     assert checked.stdout.startswith(
         "Every tool Azad needs is installed. Cloud credentials and endpoint acceptance are checked during deployment.\n"
         "The Google Cloud target and Cloud SQL also need:\n"
         "- Google Cloud CLI (gcloud) 500.0.0 or newer (not installed): https://cloud.google.com/sdk/docs/install\n"
+        f"A deploy installs the latest Azad release, verified with its signed manifest and kept in {releases}.\n"
         "azad-terraform "), checked.stdout
     assert f"is not downloaded yet; the first deploy downloads and verifies it into {cache}/" in checked.stdout, checked.stdout
     assert not cache.exists(), "--doctor downloaded azad-terraform"
@@ -155,13 +163,13 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
     bad = subprocess.run([*command, "--doctor", "--instance", "fresh", "--terraform-dir", str(root)], cwd=root,
                          env={**env, "PATH": str(tools)}, capture_output=True, text=True, timeout=20)
     assert bad.returncode == 1 and f"{root} (--terraform-dir or AZAD_TERRAFORM_DIR) is not an azad-terraform checkout" in bad.stdout, bad
-    tool("node", "v22.11.0")
+    tool("node", "v18.20.4")
     (tools / "terraform").unlink()
     checked = doctor()
     assert checked.returncode == 1, checked
     assert checked.stdout.startswith(
         "These tools are missing or too old. Please install them, then run azad again:\n"
-        "- Node.js 26.12.1 or newer (found 22.11.0): https://nodejs.org/en/download\n"
+        "- Node.js 20.0.0 or newer (found 18.20.4): https://nodejs.org/en/download\n"
         "- Terraform 1.13.4 or newer (not installed): https://developer.hashicorp.com/terraform/install\n"), checked.stdout
     assert not (instances / "fresh").exists()
 print("Noninteractive schema, protected config, TLS policy, separate bootstrap input, fixed settings and reset passed.")

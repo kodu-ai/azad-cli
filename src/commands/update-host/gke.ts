@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import type { StoreSelection } from "../update/installation"
-import { compareVersions } from "../update/release"
+import { compareVersions } from "../../release/signed"
 import type { KubernetesCall, StoreReader } from "./cloud"
 
 /** The label every updater Job carries; the starter lists Jobs by it. */

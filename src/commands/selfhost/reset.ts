@@ -2,14 +2,16 @@ import { lstatSync, readdirSync, readFileSync, rmSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { parse } from "dotenv"
 import { z } from "zod"
-import {
-  cloudflareRoot,
-  driverArguments,
-  instanceTerraformDirectory,
-} from "./deploy"
+import { driverArguments } from "./deploy"
 import { CliError } from "../../error"
 import { spawnToolSync, type Run } from "../../process"
-import { shellWord } from "./instance"
+import {
+  cloudflareRoot,
+  instanceTerraformDirectory,
+  shellWord,
+} from "./instance"
+import type { ReleaseResolver } from "./release"
+import { deploymentStarted } from "../update/installation"
 import {
   AZAD_TERRAFORM_REPOSITORY,
   selectTerraform,
@@ -276,7 +278,7 @@ function driver(workload: Workload): (command: string) => string {
         [command],
         {
           root: workload.root,
-          source: workload.source,
+          release: workload.release,
           instance: workload.directory,
         }
       ),
@@ -289,7 +291,8 @@ function driver(workload: Workload): (command: string) => string {
 type Workload = {
   /** Cloudflare's azad-terraform root name; undefined on Google Cloud. */
   root?: string
-  source: string
+  /** The release directory the installation runs. */
+  release: string
   terraform: string
   directory: string
   files: string
@@ -350,9 +353,9 @@ function removalSteps(
  * Cloudflare tokens' in `<directory>/cloudflare-bootstrap/terraform`. While
  * either records resources, or cannot be read, it removes nothing and reports
  * the exact commands that remove them: the azad-terraform drivers of
- * `options.terraform` with the source it was deployed from (`options.source`,
- * else the saved `AZAD_CLI_SOURCE`). It never downloads, runs a destroy or
- * calls a provider.
+ * `options.terraform` with the release the installation runs, which
+ * `options.release` prepares (from the cache, else downloaded). It never runs
+ * a destroy or changes anything in a cloud account.
  *
  * Otherwise it deletes, after `options.confirm` agrees (without it, it only
  * reports what it would delete): the saved answers and private settings, the
@@ -369,7 +372,8 @@ function removalSteps(
 export async function resetInstance(
   options: {
     directory: string
-    source?: string
+    /** Prepares the release the destroy commands run with. */
+    release?: ReleaseResolver
     /** The drivers the destroy commands run; defaults to the pinned release. */
     terraform?: TerraformSelection
     /** Agrees to delete the files `summary` lists; without it nothing is deleted. */
@@ -410,13 +414,10 @@ export async function resetInstance(
       reason: "its saved settings could not be read",
     })
   }
-  const source = options.source
-    ? resolve(options.source)
-    : saved.AZAD_CLI_SOURCE
   const selection = options.terraform ?? selectTerraform()
   const googleCloud = saved.AZAD_CLI_TARGET === "gcp"
   // Workload resources exist only once a deployment has started.
-  const deployed = Boolean(saved.AZAD_CLI_SOURCE_REVISION)
+  const deployed = deploymentStarted(saved)
   const files = deployed
     ? instanceTerraformDirectory(directory, saved)
     : undefined
@@ -466,13 +467,23 @@ export async function resetInstance(
     const live = blocking.some((check) => check.state === "live")
     const liveWorkload =
       files !== undefined && workload !== undefined && workload.state !== "empty"
-    // The destroy deploys from the checkout that deployed this instance.
-    const sourcePresent = source !== undefined && present(source)
+    // The destroy runs with the release the installation runs.
+    let release: string | undefined
+    let releaseProblem: string | undefined
+    if (liveWorkload)
+      try {
+        release = (await options.release?.(saved))?.directory
+      } catch (error) {
+        releaseProblem =
+          error instanceof CliError
+            ? error.message
+            : "Its release could not be prepared."
+      }
     const steps = removalSteps(
-      liveWorkload && source && sourcePresent
+      liveWorkload && release
         ? {
             root: googleCloud ? undefined : cloudflareRoot(saved),
-            source,
+            release,
             terraform: selection.directory,
             directory,
             files,
@@ -481,9 +492,9 @@ export async function resetInstance(
         : undefined,
       tokens
     )
-    const missingSource = liveWorkload && !sourcePresent
+    const missingRelease = liveWorkload && !release
     const missingTerraform =
-      liveWorkload && sourcePresent && !terraformReady(selection)
+      liveWorkload && release !== undefined && !terraformReady(selection)
     const message = [
       live
         ? "Nothing was removed: Terraform still records resources for this instance."
@@ -496,9 +507,9 @@ export async function resetInstance(
               : `not verified (${check.reason})`
           }`
       ),
-      ...(missingSource
+      ...(missingRelease
         ? [
-            "Rerun with --source pointing to the Azad checkout that deployed this instance.",
+            `The destroy commands run with the release this installation runs, which azad could not prepare${releaseProblem ? `: ${releaseProblem}` : "."} Fix that, then run azad --reset again.`,
           ]
         : []),
       ...(missingTerraform

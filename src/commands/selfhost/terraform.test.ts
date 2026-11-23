@@ -107,14 +107,13 @@ function release(
 test("the pinned release resolves to its GitHub asset and cache folder; --terraform-dir, then AZAD_TERRAFORM_DIR, override it", () => {
   expect(selectTerraform({ home: "/home/person", env: {} })).toEqual({
     kind: "release",
-    version: "0.3.0",
-    directory: "/home/person/.azad/cache/azad-terraform/0.3.0",
-    url: "https://github.com/kodu-ai/azad-terraform/releases/download/v0.3.0/azad-terraform-0.3.0.tar.gz",
+    version: AZAD_TERRAFORM_VERSION,
+    directory: `/home/person/.azad/cache/azad-terraform/${AZAD_TERRAFORM_VERSION}`,
+    url: `https://github.com/kodu-ai/azad-terraform/releases/download/v${AZAD_TERRAFORM_VERSION}/azad-terraform-${AZAD_TERRAFORM_VERSION}.tar.gz`,
   })
-  // The release this CLI deploys with is always pinned.
-  expect(AZAD_TERRAFORM_SHA256[AZAD_TERRAFORM_VERSION]).toMatch(
-    /^[a-f0-9]{64}$/u
-  )
+  // The release this CLI deploys with has a pin: a digest, or a placeholder
+  // until it is published, which is refused like a missing pin.
+  expect(AZAD_TERRAFORM_SHA256[AZAD_TERRAFORM_VERSION]).toBeDefined()
   expect(
     selectTerraform({
       home: "/home/person",
@@ -190,19 +189,25 @@ test("a download that does not match its published checksum installs nothing", a
   expect(unlisted.requests).toEqual([`${URL}.sha256`])
 })
 
-test("a version this CLI pins no checksum for is refused before any download", async () => {
-  const f = release()
-  await expect(
-    prepareTerraform(f.selection, {
-      execute: f.execute,
-      fetcher: f.fetcher,
-      pins: {},
-    })
-  ).rejects.toThrow(
-    "This azad release pins no checksum for azad-terraform 0.0.0-test, so it cannot verify the download."
-  )
-  expect(f.requests).toEqual([])
-  expect(existsSync(f.selection.directory)).toBe(false)
+test("a version this CLI pins no checksum for, or only a placeholder, is refused before any download", async () => {
+  const placeholders: Record<string, string>[] = [
+    {},
+    { [VERSION]: "TODO-release" },
+  ]
+  for (const pins of placeholders) {
+    const f = release()
+    await expect(
+      prepareTerraform(f.selection, {
+        execute: f.execute,
+        fetcher: f.fetcher,
+        pins,
+      })
+    ).rejects.toThrow(
+      "This azad release pins no checksum for azad-terraform 0.0.0-test, so it cannot verify the download."
+    )
+    expect(f.requests).toEqual([])
+    expect(existsSync(f.selection.directory)).toBe(false)
+  }
 })
 
 test("a release whose published checksum differs from this CLI's pin installs nothing", async () => {

@@ -2,12 +2,14 @@
 
 Every provider is a local fake. PATH shims stand in for Node.js and npx (only
 their versions; npx cannot start the Clerk CLI unless a scenario adds one),
+the deployment tools (Bun, Terraform, curl and tar: versions only),
 the Clerk CLI (npx), gcloud, the desktop browser (open/xdg-open, which also
 plays GitHub's App manifest redirect) and the clipboard. One loopback HTTP server answers the
 Cloudflare, Clerk and GitHub APIs through the CLI's documented API base
 overrides (CLOUDFLARE_API_BASE_URL, CLERK_API_URL, GITHUB_API_URL). A refused
-HTTPS proxy keeps any other request off the network. All credentials are inert
-fixtures.
+HTTPS proxy keeps any other request off the network, so the deploy that
+follows the questions stops when it cannot reach the public Azad releases. All
+credentials are inert fixtures.
 """
 
 import base64
@@ -58,6 +60,9 @@ PUBLISHABLE = "pk_live_" + base64.b64encode(b"clerk.board.example.com$").decode(
 GOOGLE_ID = "123-fixture.apps.googleusercontent.com"
 GOOGLE_SECRET = "GOCSPX-fixture-google"
 GOOGLE_CALLBACK = "https://clerk.board.example.com/v1/oauth_callback"
+MINIAPPS = "apps.example.com"
+# Where a deploy stops without network: downloading the public release.
+OFFLINE = "Could not reach https://api.azad.pro/api/v3/releases/"
 
 root = pathlib.Path(tempfile.mkdtemp(prefix="azad-cli-terminal-"))
 binary = str(pathlib.Path(sys.argv[1]).resolve())
@@ -272,6 +277,11 @@ sys.exit(1)
 node = root / "node"
 shim(node, "node", NODE)
 shim(node, "npx", NPX)
+# The deployment tools, as the tool check reads them.
+deploy = root / "deploy-tools"
+for name, version in {"bun": "1.4.4", "terraform": "Terraform v1.13.4",
+                      "curl": "curl 8.5.0 (x86_64-pc-linux-gnu)", "tar": "tar (GNU tar) 1.35"}.items():
+    shim(deploy, name, f"print({version!r})\n")
 common = root / "bin"
 for name in ["open", "xdg-open"]:
     shim(common, name, BROWSER)
@@ -288,15 +298,17 @@ threading.Thread(target=server.serve_forever, daemon=True).start()
 api = f"http://127.0.0.1:{server.server_port}"
 
 
-def start(directory, clerk=None, args=(), tools=True, cwd=None):
+def start(directory, clerk=None, args=(), tools=True, cwd=None, deploy_tools=True):
     """Runs the binary with only the shims on PATH: Node.js and npx unless not
-    `tools`, and the Clerk CLI only with `clerk`. Without `directory` the
-    instance is chosen as a person's plain `azad` would, from `cwd`."""
+    `tools`, the deployment tools unless not `deploy_tools`, and the Clerk CLI
+    only with `clerk`. Without `directory` the instance is chosen as a
+    person's plain `azad` would, from `cwd`."""
     home = root / "home" / (directory.name if directory else cwd.name)
     home.mkdir(parents=True, exist_ok=True)
     refused = "http://127.0.0.1:9"
     env = {
-        "PATH": ":".join(str(p) for p in ([clerk] if clerk else []) + ([node] if tools else []) + [common]),
+        "PATH": ":".join(str(p) for p in ([clerk] if clerk else []) + ([node] if tools else [])
+                         + ([deploy] if deploy_tools else []) + [common]),
         "HOME": str(home),
         "TERM": "xterm-256color",
         "HTTPS_PROXY": refused, "https_proxy": refused,
@@ -335,6 +347,28 @@ def finish(child, status):
 def cancel(child):
     child.sendcontrol("c")
     finish(child, 130)
+
+
+def offline_deploy(child):
+    """The deploy after the questions stops where it downloads the release."""
+    child.expect_exact(OFFLINE)
+    finish(child, 1)
+
+
+def miniapps(child, first=None):
+    """Mini Apps on their own domain (Enter), checked against the account's
+    zones: `first` is a domain in no zone, asked again; then MINIAPPS, a
+    subdomain of the fixture zone."""
+    child.expect_exact("Where should Mini Apps run?")
+    child.send("\r")
+    child.expect_exact("Mini Apps domain (such as apps.example.com)")
+    if first:
+        child.send(first + "\r")
+        child.expect_exact(f"None of your Cloudflare accounts has a zone for {first}.")
+        child.expect_exact("Mini Apps domain (such as apps.example.com)")
+    child.send(MINIAPPS + "\r")
+    child.expect_exact(f"Mini Apps domain: {MINIAPPS}, in the zone example.com")
+    child.expect_exact("Advanced Certificate Manager on example.com")
 
 
 def env_file(directory):
@@ -436,20 +470,18 @@ try:
     assert "AZAD_CLI_TARGET='cloudflare'" in env_file(missing)
     print("Missing tools stop the wizard right after the target question, with minimums and download pages PASS")
 
-    # A deploy also needs Git, Bun, Node.js 26.12.1+ and Terraform: a saved
-    # target is checked before the first question.
-    checkout = root / "source-checkout"
-    checkout.mkdir()
-    child, transcript = start(missing, args=["--source", str(checkout)])
+    # The deploy that follows needs Bun, Terraform, curl and tar (no Git or
+    # newer Node.js): a saved target is checked before the first question.
+    child, transcript = start(missing, deploy_tools=False)
     child.expect_exact("These tools are missing or too old. Please install them, then run azad again:")
-    child.expect_exact("- Git 2.0.0 or newer (not installed): https://git-scm.com/downloads")
     child.expect_exact("- Bun 1.4.4 or newer (not installed): https://bun.sh/docs/installation")
-    child.expect_exact("- Node.js 26.12.1 or newer (found 22.11.0): https://nodejs.org/en/download")
     child.expect_exact("- Terraform 1.13.4 or newer (not installed): https://developer.hashicorp.com/terraform/install")
+    child.expect_exact("- curl 7.0.0 or newer (not installed): https://curl.se/download.html")
+    child.expect_exact("- tar 1.0.0 or newer (not installed): https://www.gnu.org/software/tar/")
     finish(child, 1)
     assert "Where should Azad run?" not in transcript.getvalue()
-    assert "npm (npx)" not in transcript.getvalue()
-    print("A deploy lists missing and too-old deployment tools before any question PASS")
+    assert "npm (npx)" not in transcript.getvalue() and "Git" not in transcript.getvalue()
+    print("A deploy lists missing deployment tools before any question PASS")
 
     # Without --directory the instance lives in the home folder.
     fresh = root / "fresh-cwd"
@@ -485,14 +517,15 @@ try:
     child.expect_exact("Cloudflare token")
     child.send(ROOT_TOKEN + "\r")
     child.expect_exact("Cloudflare account: Fixture Account")
+    miniapps(child, first="example-apps.com")
     clerk_by_cli(child)
     webhook_and_github(child, clerk_automated=True, google=True)
     # Everything else keeps its default unless the person opens optional settings.
-    child.expect_exact("Defaults: Mini Apps on, meetings on (Cloudflare RealtimeKit), project repositories on Cloudflare Artifacts")
+    child.expect_exact(f"Defaults: Mini Apps on {MINIAPPS}, meetings on (Cloudflare RealtimeKit), project repositories on Cloudflare Artifacts")
     child.expect_exact("Configure optional settings?")
     child.send("n")
-    child.expect_exact("Settings saved.")
-    finish(child, 0)
+    # The deploy follows at once; it needs the public release.
+    offline_deploy(child)
     masked(transcript, visible_database=True)
     output = transcript.getvalue()
     assert "Enable Mini Apps" not in output and "Review branding" not in output
@@ -503,13 +536,15 @@ try:
     for expected in ["AZAD_CLI_TARGET='cloudflare'", "AZAD_CLI_DATABASE_SERVICE='neon'",
                      "AZAD_CLI_DATABASE_PROVIDER='postgres'", f"CLOUDFLARE_ACCOUNT_ID='{ACCOUNT}'",
                      f"CLERK_PUBLISHABLE_KEY='{PUBLISHABLE}'", "AZAD_CLI_CLERK_INSTANCE_ID='ins_prod'",
-                     "GITHUB_APP_ID='4242'", "AZAD_SELF_HOST_MINIAPPS='enabled'",
-                     f"V3_CF_ACCOUNT_ID='{ACCOUNT}'", "AZAD_SELF_HOST_DATABASE_CA='neon-isrg-root-x1'",
+                     "GITHUB_APP_ID='4242'", f"AZAD_CLI_MINIAPPS_DOMAIN='{MINIAPPS}'",
+                     "AZAD_SELF_HOST_DATABASE_CA='neon-isrg-root-x1'",
                      "AZAD_CLI_MANAGED_SOURCE='enabled'", "AZAD_CLI_MEETINGS='enabled'",
                      "AZAD_CLI_STORAGE='default'",
                      "@ep-test.aws.neon.tech/azad?sslmode=verify-full'"]:
         assert expected in saved, expected
     assert ROOT_TOKEN not in saved and WRONG_TOKEN not in saved and "channel_binding" not in saved
+    assert "V3_CF_" not in saved and "AZAD_SELF_HOST_MINIAPPS" not in saved
+    assert "AZAD_CLI_RELEASE_SHA" not in saved, "A deploy that never started recorded a release"
     assert "AZAD_CLI_CLERK_GITHUB_SIGN_IN" not in saved
     assert "AZAD_CLI_CLERK_GOOGLE_SIGN_IN='enabled'" in saved
     assert GOOGLE_SECRET not in output, "The Google client secret was displayed"
@@ -538,24 +573,23 @@ try:
     assert ("GET", "/client/v4/user/tokens/permission_groups", "Bearer " + WRONG_TOKEN) in api_requests
     print("cloudflare/neon: automatic account, Clerk and GitHub with masked secrets and private files PASS")
 
-    # A complete configuration deploys (here: is kept) with one confirmation.
+    # A complete configuration deploys with one confirmation.
     before = env_file(neon)
     opens, calls = len(lines(browser_log)), len(api_requests)
     child, transcript = start(neon, clerk_cli)
     child.expect_exact("Your saved settings are complete.")
-    child.expect_exact("Keep them? (No to change settings)")
+    child.expect_exact("Deploy with them? (No to change settings)")
     child.send("y")
-    child.expect_exact("Settings saved.")
-    finish(child, 0)
+    offline_deploy(child)
     assert "Where should Azad run?" not in transcript.getvalue()
     assert (len(lines(browser_log)), len(api_requests)) == (opens, calls)
     assert env_file(neon) == before
     masked(transcript)
-    print("Complete saved settings are kept with one confirmation PASS")
+    print("Complete saved settings deploy with one confirmation PASS")
 
     # Changing settings walks the questions; valid saved answers keep with Enter.
     child, transcript = start(neon, clerk_cli)
-    child.expect_exact("Keep them? (No to change settings)")
+    child.expect_exact("Deploy with them? (No to change settings)")
     child.send("n")
     child.expect_exact("Where should Azad run?")
     child.send("\r")
@@ -569,6 +603,12 @@ try:
     child.expect_exact("Cloudflare token (Enter keeps saved token)")
     child.send("\r")
     child.expect_exact("Cloudflare account: Fixture Account")
+    # The saved domain keeps with Enter, and is checked again.
+    child.expect_exact("Where should Mini Apps run?")
+    child.send("\r")
+    child.expect_exact("Mini Apps domain (such as apps.example.com)")
+    child.send("\r")
+    child.expect_exact(f"Mini Apps domain: {MINIAPPS}, in the zone example.com")
     child.expect_exact("Clerk: using the saved application keys.")
     child.expect_exact("Clerk webhook signing secret (Enter keeps saved value)")
     child.send("\r")
@@ -588,7 +628,7 @@ try:
     print("Changing settings shows the saved Neon URL and keeps other saved answers without reopening pages PASS")
 
     child, transcript = start(neon, clerk_cli)
-    child.expect_exact("Keep them? (No to change settings)")
+    child.expect_exact("Deploy with them? (No to change settings)")
     child.send("n")
     child.expect_exact("Where should Azad run?")
     child.send("\r")
@@ -606,9 +646,9 @@ try:
     checkpoint = neon / ".env"
     checkpoint.write_text(before.replace("sslmode=verify-full", "sslmode=require&channel_binding=require"))
     child, transcript = start(neon, clerk_cli)
-    child.expect_exact("Keep them? (No to change settings)")
+    child.expect_exact("Deploy with them? (No to change settings)")
     child.send("y")
-    finish(child, 0)
+    offline_deploy(child)
     resumed = env_file(neon)
     assert "sslmode=verify-full" in resumed and "channel_binding" not in resumed
     assert "Use certificate-verified TLS instead" not in transcript.getvalue()
@@ -644,6 +684,7 @@ try:
     assert opened(TOKENS_PAGE) == opens_before + 1
     child.send(ROOT_TOKEN + "\r")
     child.expect_exact("Cloudflare account: Fixture Account")
+    miniapps(child)
     child.expect_exact("The Clerk CLI could not start")
     child.expect_exact("Clerk publishable key (production)")
     cancel(child)
@@ -666,12 +707,14 @@ try:
     child.send(WEB + "\r")
     token(child)
     child.expect_exact("Cloudflare account: Fixture Account")
+    # Not now: no domain is asked.
+    child.expect_exact("Where should Mini Apps run?")
+    child.send("\x1b[B\r")
     clerk_by_hand(child, "The Clerk CLI could not start (offline, or the npm registry is blocked)")
     webhook_and_github(child, "acme-inc")
+    child.expect_exact("Defaults: Mini Apps off")
     child.expect_exact("Configure optional settings?")
     child.send("y")
-    child.expect_exact("Enable Mini Apps?")
-    child.send("n")
     child.expect_exact("Enable projects (managed project source on Cloudflare Artifacts)?")
     child.send("n")
     child.expect_exact("Enable meetings (Cloudflare RealtimeKit)?")
@@ -682,18 +725,18 @@ try:
     child.send("n")
     child.expect_exact("Review branding, error reporting or runtime settings?")
     child.send("n")
-    child.expect_exact("Settings saved.")
-    finish(child, 0)
+    offline_deploy(child)
     masked(transcript)
+    assert "Mini Apps domain" not in transcript.getvalue() and "Enable Mini Apps" not in transcript.getvalue()
     saved = env_file(postgres)
     for expected in ["AZAD_CLI_DATABASE_SERVICE='postgres'", "AZAD_CLI_DATABASE_PROVIDER='postgres'",
-                     "AZAD_SELF_HOST_MINIAPPS='disabled'", f"CLERK_PUBLISHABLE_KEY='{PUBLISHABLE}'",
+                     "AZAD_CLI_MINIAPPS_DOMAIN='none'", f"CLERK_PUBLISHABLE_KEY='{PUBLISHABLE}'",
                      "AZAD_CLI_MANAGED_SOURCE='disabled'"]:
         assert expected in saved, expected
     assert "V3_CF_ACCOUNT_ID" not in saved
     assert json.loads(lines(github_log)[-1])["action"].startswith(
         "https://github.com/organizations/acme-inc/settings/apps/new?state=")
-    print("cloudflare/postgres: manual Clerk when its CLI cannot start, organization App, Mini Apps off in optional settings PASS")
+    print("cloudflare/postgres: manual Clerk when its CLI cannot start, organization App, Mini Apps not now PASS")
 
     # Cloud SQL with a Clerk CLI that cannot start.
     cloudsql = root / "cloudsql"
@@ -715,12 +758,16 @@ try:
     child.send(WEB + "\r")
     token(child)
     child.expect_exact("Cloudflare account: Fixture Account")
+    miniapps(child)
     clerk_by_hand(child, "The Clerk CLI could not start (offline, or the npm registry is blocked)")
     webhook_and_github(child)
     child.expect_exact("Configure optional settings?")
     child.send("n")
+    # The deploy checks Terraform's Google credentials before it downloads anything.
+    child.expect_exact("gcloud auth application-default login")
     finish(child, 0)
     masked(transcript)
+    assert OFFLINE not in transcript.getvalue()
     saved = env_file(cloudsql)
     assert "Google Cloud project ID" not in transcript.getvalue()
     for expected in ["AZAD_CLI_DATABASE_SERVICE='cloudsql'", "AZAD_CLI_GCP_PROJECT='customer-project'",
@@ -757,10 +804,13 @@ try:
     child.expect_exact("Defaults: Mini Apps on, meetings on (Cloudflare RealtimeKit), daily disk backups")
     child.expect_exact("Configure optional settings?")
     child.send("n")
+    child.expect_exact("gcloud auth application-default login")
     finish(child, 0)
     masked(transcript)
     output = transcript.getvalue()
     assert "Enable projects" not in output and "Enable Mini Apps" not in output
+    # Google Cloud asks nothing about where Mini Apps run.
+    assert "Where should Mini Apps run?" not in output
     assert "How often should the disks" not in output and "uploaded files" not in output
     assert "host your database" not in output
     saved = env_file(gcp)
@@ -774,15 +824,16 @@ try:
     print("gcp: no database question; gcloud sign-in, project picker, sizing and agent machine; Mini Apps on the loader PASS")
 
     # Once a deployment has started, Enter resumes it with the saved settings.
-    deployed = env_file(neon) + f"AZAD_CLI_SOURCE_REVISION='{'a' * 40}'\n"
+    deployed = env_file(neon) + f"AZAD_CLI_RELEASE_VERSION='5.30.0'\nAZAD_CLI_RELEASE_SHA='{'a' * 40}'\n"
     (neon / ".env").write_text(deployed)
     opens = len(lines(browser_log))
     child, transcript = start(neon, clerk_cli)
     child.expect_exact("A deployment of this instance has started. What next?")
     child.send("\r")
     child.expect_exact("Resuming the deployment of this instance with its saved settings.")
-    child.expect_exact("Settings saved.")
-    finish(child, 0)
+    # It deploys the release it recorded; offline, that stops at the download.
+    child.expect_exact(OFFLINE + "5.30.0/manifest.json")
+    finish(child, 1)
     assert "Where should Azad run?" not in transcript.getvalue()
     assert env_file(neon) == deployed
     print("After a deploy has started, Enter resumes with the saved settings PASS")
@@ -799,6 +850,8 @@ try:
     child.expect_exact("Cloudflare token (Enter keeps saved token)")
     child.send("\r")
     child.expect_exact(f"Cloudflare account ID: {ACCOUNT} (fixed)")
+    child.expect_exact("Where should Mini Apps run: On their own domain (fixed)")
+    child.expect_exact(f"Mini Apps domain (such as apps.example.com): {MINIAPPS} (fixed)")
     child.expect_exact("Clerk: using the saved application keys.")
     child.expect_exact("Clerk webhook signing secret (Enter keeps saved value)")
     child.send("\r")
@@ -810,7 +863,6 @@ try:
     child.send("\r")
     child.expect_exact("Configure optional settings?")
     child.send("y")
-    child.expect_exact("Enable Mini Apps: yes (fixed)")
     child.expect_exact("Enable projects (managed project source on Cloudflare Artifacts): yes (fixed)")
     child.expect_exact("Enable meetings (Cloudflare RealtimeKit)?")
     child.send("n")
@@ -820,8 +872,7 @@ try:
     child.expect_exact("Review branding, error reporting or runtime settings?")
     child.send("n")
     child.expect_exact("Saved changes to AZAD_CLI_MEETINGS")
-    child.expect_exact("Settings saved.")
-    finish(child, 0)
+    offline_deploy(child)
     masked(transcript)
     changed = env_file(neon)
     assert "AZAD_CLI_MEETINGS='disabled'" in changed and f"AZAD_CLI_WEB_HOST='{WEB}'" in changed
@@ -845,9 +896,7 @@ try:
     # Once the state is empty, reset lists what it deletes and defaults to No.
     token_state["resources"] = []
     (tokens / "terraform.tfstate").write_text(json.dumps(token_state))
-    checkout = root / "deployed-source"
-    checkout.mkdir()
-    reset = ["--reset", "--source", str(checkout)]
+    reset = ["--reset"]
     child, transcript = start(neon, args=reset)
     child.expect_exact(str(neon / ".cloudflare-bootstrap-credential"))
     child.expect_exact("Delete these files and start over?")

@@ -1,9 +1,23 @@
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { z } from "zod"
 import { CliError } from "../../error"
 import { readPrivateEnv } from "../selfhost/config"
-import { instanceTerraformDirectory } from "../selfhost/deploy"
+import { instanceTerraformDirectory } from "../selfhost/instance"
+import type { RunUpdater } from "./run"
+
+/**
+ * The saved settings that record the release an instance's deploy uses:
+ * its version and the commit it was built from. A deployment has started
+ * once they are saved.
+ */
+export const RELEASE_VERSION_KEY = "AZAD_CLI_RELEASE_VERSION"
+export const RELEASE_SHA_KEY = "AZAD_CLI_RELEASE_SHA"
+
+/** True once a deploy of the instance with these settings has started. */
+export function deploymentStarted(values: Record<string, string>): boolean {
+  return Boolean(values[RELEASE_SHA_KEY])
+}
 
 /**
  * Where an installation keeps its state in its own cloud, as azad-terraform
@@ -67,21 +81,22 @@ export type LocalInstallation = {
  * (`terraform.tfvars.json`). The updater shares that cache with deploys, so
  * the keys it holds are used and refreshed in place.
  *
- * @throws CliError When the instance was never deployed.
+ * @throws CliError When the instance was never deployed, or its deploy has
+ *   not created the state bucket yet.
  */
 export function localInstallation(directory: string): LocalInstallation {
   const envPath = join(directory, ".env")
   const values = existsSync(envPath) ? readPrivateEnv(envPath) : undefined
-  if (!values?.AZAD_CLI_SOURCE_REVISION)
+  if (!values || !deploymentStarted(values))
     throw new CliError(
-      `${directory} has no deployed installation. Deploy it first: azad --source CHECKOUT.`
+      `${directory} has no deployed installation. Deploy it first: azad.`
     )
   const terraform = instanceTerraformDirectory(directory, values)
   const backend = join(terraform, "backend.json")
   const vars = join(terraform, "terraform.tfvars.json")
   if (!existsSync(backend) || !existsSync(vars))
     throw new CliError(
-      `${terraform} has no state bucket configured. Run azad --source CHECKOUT once to move the installation's state into its cloud, then update.`
+      `${terraform} has no state bucket configured yet: the deploy stopped before creating it. Resume the deploy with azad, then update.`
     )
   let store: StoreSelection
   let deployment: z.infer<typeof varsSchema>["deployment"]
@@ -93,7 +108,7 @@ export function localInstallation(directory: string): LocalInstallation {
       .deployment
   } catch {
     throw new CliError(
-      `${backend} or ${vars} is not what azad-terraform writes. Restore them, or rerun azad --source CHECKOUT.`
+      `${backend} or ${vars} is not what azad-terraform writes. Restore them, or resume the deploy with azad.`
     )
   }
   const handoff = join(deployment.state_directory, "handoff.json")
@@ -103,5 +118,66 @@ export function localInstallation(directory: string): LocalInstallation {
     stateDirectory: deployment.state_directory,
     handoffFile: existsSync(handoff) ? handoff : undefined,
     work: join(directory, "update"),
+  }
+}
+
+/** What the updater's `status` prints: the receipt, the current or last operation. */
+export const statusSchema = z.looseObject({
+  operation: z
+    .looseObject({
+      id: z.string(),
+      kind: z.string(),
+      status: z.string(),
+      outcome: z.string().nullable(),
+      target: z.looseObject({ version: z.string() }).nullable(),
+      holder: z
+        .looseObject({
+          executor: z.string(),
+          host: z.string(),
+          heartbeatAt: z.string(),
+        })
+        .nullable(),
+      error: z.string().nullable(),
+      updatedAt: z.string(),
+    })
+    .nullable(),
+  release: z
+    .looseObject({ version: z.string().nullable(), sourceSha: z.string() })
+    .nullable(),
+  infrastructure: z.unknown(),
+})
+export type InstallationStatus = z.infer<typeof statusSchema>
+
+/**
+ * Reads the installation's receipt and operation record from its store with
+ * the updater at `entry` (`updater.js status`); changes nothing.
+ *
+ * @throws CliError When the updater fails or prints a status this azad cannot read.
+ */
+export async function readInstallationStatus(
+  installation: LocalInstallation,
+  entry: string,
+  run: RunUpdater
+): Promise<InstallationStatus> {
+  mkdirSync(installation.work, { recursive: true, mode: 0o700 })
+  const result = await run(
+    [
+      entry,
+      "status",
+      "--store",
+      JSON.stringify(installation.store),
+      "--settings",
+      installation.settingsFile,
+    ],
+    { cwd: installation.work, capture: true }
+  )
+  if (result.status !== 0)
+    throw new CliError(
+      "Reading the installation's status failed; the reason is above."
+    )
+  try {
+    return statusSchema.parse(JSON.parse(result.stdout))
+  } catch {
+    throw new CliError("The updater printed a status this azad cannot read.")
   }
 }

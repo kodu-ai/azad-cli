@@ -31,7 +31,17 @@ import {
   wizardNeeds,
 } from "./prerequisites"
 import { provisionMeetingsCommand } from "./realtimekit"
+import {
+  recordedIdentity,
+  releaseResolver,
+  type ReleaseRequest,
+} from "./release"
 import { resetInstance } from "./reset"
+import {
+  FIRST_INSTALLER_RELEASE,
+  releasesDirectory,
+} from "../../release/directory"
+import { deploymentStarted } from "../update/installation"
 import {
   AZAD_TERRAFORM_REPOSITORY,
   describeTerraform,
@@ -43,7 +53,10 @@ import { CancelledError, configure, terminal, terminalFor } from "./wizard"
 
 const OPTIONS = {
   help: { type: "boolean", short: "h" },
-  version: { type: "boolean" },
+  /** `--version` alone (see {@link parseOptions}). */
+  "print-version": { type: "boolean" },
+  /** `--version x.y.z`: the Azad release to install. */
+  version: { type: "string" },
   instance: { type: "string" },
   directory: { type: "string" },
   source: { type: "string" },
@@ -83,14 +96,14 @@ const HELP = [
   `azad ${VERSION}: set up and run a self-hosted Azad`,
   "",
   "Usage:",
-  "  azad [--instance NAME | --directory PATH] [--source CHECKOUT] [--terraform-dir PATH]",
+  "  azad [--instance NAME | --directory PATH] [--version x.y.z | --source CHECKOUT] [--terraform-dir PATH]",
   "  azad --doctor [--instance NAME | --directory PATH] [--terraform-dir PATH]",
-  "  azad --reset [--instance NAME | --directory PATH] [--source CHECKOUT] [--terraform-dir PATH] [--yes] [--json]",
-  "  azad --backup-keys DIR [--instance NAME | --directory PATH] [--source CHECKOUT] [--terraform-dir PATH]",
+  "  azad --reset [--instance NAME | --directory PATH] [--terraform-dir PATH] [--yes] [--json]",
+  "  azad --backup-keys DIR [--instance NAME | --directory PATH] [--terraform-dir PATH]",
   "  azad --schema",
   "  azad --status [--instance NAME | --directory PATH] [--config FILE] [--credentials FILE]",
   "  azad --non-interactive --config FILE --credentials FILE [--instance NAME | --directory PATH] [--json]",
-  "  azad --non-interactive --create-tokens|--plan|--apply --source CHECKOUT [--terraform-dir PATH] [--instance NAME | --directory PATH]",
+  "  azad --non-interactive --create-tokens|--plan|--apply [--version x.y.z | --source CHECKOUT] [--terraform-dir PATH] [--instance NAME | --directory PATH]",
   "  azad --provision-meetings --web-host HOST --bootstrap-file PRIVATE_ENV --settings-file PRIVATE_ENV [--settings-file PRIVATE_ENV] [--account-id ID] [--app-name NAME]",
   "  azad --version | --help",
   "  azad update [--instance NAME | --directory PATH] [--version latest|x.y.z] [--status]   (azad update --help)",
@@ -98,18 +111,19 @@ const HELP = [
   "Self-hosting is the default command; `azad selfhost [options]` is the same.",
   "",
   "Each instance keeps its answers and private settings in its own directory: ~/.azad/instances/NAME (%USERPROFILE%\\.azad\\instances\\NAME on Windows). Without --instance the name is default; --directory PATH uses another directory instead. Terraform's state, the installation's receipts and its keys live in its own cloud (a bucket and secret store the deploy creates); the directory keeps a cache.",
-  "Saves private local configuration after each answer and resumes it on the next run.",
-  "The first question chooses where Azad runs: Cloudflare (Workers, Pages and Hyperdrive) or your Google Cloud (GKE Autopilot, Cloud SQL and Cloud Storage, with Cloudflare for DNS).",
-  "Right after it, the wizard checks the tools it needs and stops with a list of any that are missing or too old: Node.js 20+ and npm (npx) for the Clerk CLI; gcloud for the Google Cloud target and Cloud SQL; and to deploy (--source), Git, Bun 1.4.4+, Node.js 26.12.1+ and Terraform 1.13.4+.",
-  "--doctor checks the same tools for the target saved in the instance, and where azad-terraform is, without starting the wizard.",
-  "--source CHECKOUT is a Git checkout of the Azad app source; deploys need it until app release artifacts are published.",
+  "Saves private local configuration after each answer and resumes it on the next run. Once every question is answered it deploys: it shows each Terraform plan and applies it only when you say yes.",
+  "The first question chooses where Azad runs: Cloudflare (Workers, Pages and Hyperdrive) or your Google Cloud (GKE Autopilot, Cloud SQL and Cloud Storage, with Cloudflare for DNS). On Cloudflare, Mini Apps run on a domain of their own, which the wizard asks for.",
+  "Right after it, the wizard checks the tools it needs and stops with a list of any that are missing or too old: Bun 1.4.4+, Terraform 1.13.4+, curl and tar to deploy; Node.js 20+ and npm (npx) for the Clerk CLI; gcloud for the Google Cloud target and Cloud SQL.",
+  "--doctor checks the same tools for the target saved in the instance, which release a deploy uses and where azad-terraform is, without starting the wizard.",
+  `A deploy installs a signed Azad release from api.azad.pro: azad checks the manifest's signature against the key it pins and every downloaded file against the manifest, and keeps the release in ~/.azad/cache/releases/VERSION. A new install takes the latest release; --version x.y.z picks another (Azad ${FIRST_INSTALLER_RELEASE} or newer). An existing install keeps the release it runs (azad update and console updates move it forward); --version moves it to a newer one, never an older one.`,
+  "--source CHECKOUT builds an unsigned local release from an Azad app checkout instead and deploys that (development; kept in ~/.azad/cache/releases/local-COMMIT).",
   `Deploys run azad-terraform (https://github.com/${AZAD_TERRAFORM_REPOSITORY}): the pinned release is downloaded, verified and kept in ~/.azad/cache/azad-terraform/VERSION. --terraform-dir PATH (or AZAD_TERRAFORM_DIR) runs a local checkout instead.`,
   "Automation defaults to configuration only. Config contains non-secret JSON fields/choices; credentials are private dotenv, never command arguments.",
   "--provision-meetings sets up meetings for a running installation: it finds or creates its Cloudflare RealtimeKit app and a Realtime-only token, and writes the settings into each private settings file. Rerunning it changes nothing that is already in place.",
   "--backup-keys DIR writes an offline copy of the installation's keys (secrets.json, release-key.pem) to the new directory DIR. Keep it off the cloud: on Cloudflare only the installation's own Worker can read the keys back.",
   "--take-over OPERATION lets a deploy take over the operation a stopped run on another machine left, once you have confirmed that run is gone (the refusal names it).",
-  "--reset deletes the instance's saved answers, private settings, Terraform variables and deploy state so the next run starts from scratch; its Terraform state stays. While Terraform still records resources for the instance it deletes nothing and prints the destroy commands to run first. Without a terminal it needs --yes.",
-  "After a deployment has started, a rerun offers to resume it or to change settings first; settings the deploy fixed (target, cloud project and region, hostname, database, storage) stay as they are.",
+  "--reset deletes the instance's saved answers, private settings, Terraform variables and deploy state so the next run starts from scratch; its Terraform state stays. While Terraform still records resources for the instance it deletes nothing and prints the destroy commands to run first, with the release the installation runs. Without a terminal it needs --yes.",
+  "After a deployment has started, a rerun offers to resume it or to change settings first; settings the deploy fixed (target, cloud project and region, hostname, database, storage, Mini Apps domain) stay as they are.",
   "",
 ].join("\n")
 
@@ -118,8 +132,16 @@ const HELP = [
  * but not the argument, which may be a mistyped secret.
  */
 function parseOptions(argv: string[]) {
+  // `--version` alone prints this azad's version; followed by a release
+  // version it picks the Azad release to install.
+  const args = argv.map((arg, index) =>
+    arg === "--version" &&
+    !/^(?:latest|\d+\.\d+\.\d+)$/u.test(argv[index + 1] ?? "")
+      ? "--print-version"
+      : arg
+  )
   try {
-    return parseArgs({ args: argv, options: OPTIONS, strict: true }).values
+    return parseArgs({ args, options: OPTIONS, strict: true }).values
   } catch (error) {
     const code =
       error instanceof Error && "code" in error ? error.code : undefined
@@ -175,12 +197,21 @@ function terraformStatus(selection: TerraformSelection): {
   }
 }
 
+/** One line on the release a deploy of this instance uses; reads nothing remote. */
+function releaseStatus(saved: Record<string, string> | undefined): string {
+  const recorded = saved ? recordedIdentity(saved) : undefined
+  return recorded
+    ? `This instance records Azad ${recorded.version} (${recorded.sourceSha.slice(0, 12)}); a deploy uses it, or the newer release the installation runs. Releases are kept in ${releasesDirectory()}.`
+    : `A deploy installs the latest Azad release, verified with its signed manifest and kept in ${releasesDirectory()}.`
+}
+
 /**
  * `--doctor`: the tools the wizard and the deploy need for the target saved in
- * the instance, listed as a run would list them, and where azad-terraform is.
- * Before any setting is saved the target is unknown, so gcloud (Google Cloud
- * and Cloud SQL) is listed separately and is not required. Exit code 1 when a
- * required tool is missing or a `--terraform-dir` is not a checkout.
+ * the instance, listed as a run would list them, which release a deploy uses
+ * and where azad-terraform is. Before any setting is saved the target is
+ * unknown, so gcloud (Google Cloud and Cloud SQL) is listed separately and is
+ * not required. Exit code 1 when a required tool is missing or a
+ * `--terraform-dir` is not a checkout.
  */
 function doctor(
   location: InstanceLocation,
@@ -189,8 +220,8 @@ function doctor(
   const saved = savedSettings(location.directory)
   const required = checkTools(
     requiredTools({
+      ...(saved ? wizardNeeds(saved) : { clerkCli: true }),
       deploy: true,
-      googleCloud: saved ? needsGoogleCloud(saved) : false,
     })
   )
   const googleCloud = saved
@@ -207,6 +238,7 @@ function doctor(
             `The Google Cloud target and Cloud SQL also need:\n${toolProblemLines(googleCloud).join("\n")}`,
           ]
         : []),
+      releaseStatus(saved),
       terraform.line,
     ].join("\n") + "\n"
   )
@@ -217,7 +249,7 @@ async function selfhostMain(argv: string[]): Promise<number> {
   // Windows has no permission bits; see ownerOnly in config.ts.
   if (process.platform !== "win32") process.umask(0o077)
   const values = parseOptions(argv)
-  if (values.version) {
+  if (values["print-version"]) {
     process.stdout.write(`${VERSION} (${COMMIT})\n`)
     return 0
   }
@@ -232,6 +264,9 @@ async function selfhostMain(argv: string[]): Promise<number> {
   const source = values.source
     ? resolve(localPath(values.source))
     : undefined
+  if (source && values.version !== undefined)
+    throw new CliError("Use --source or --version, not both.")
+  const request: ReleaseRequest = { source, version: values.version }
   const terraform = selectTerraform({
     directory: values["terraform-dir"],
     env: process.env,
@@ -245,7 +280,12 @@ async function selfhostMain(argv: string[]): Promise<number> {
     await backupKeys(
       location.directory,
       saved,
-      { source: source ?? saved.AZAD_CLI_SOURCE, terraform },
+      {
+        release: releaseResolver(location.directory, request, {
+          note: (message) => process.stderr.write(`${message}\n`),
+        }),
+        terraform,
+      },
       resolve(localPath(values["backup-keys"]))
     )
     return 0
@@ -266,14 +306,14 @@ async function selfhostMain(argv: string[]): Promise<number> {
       ].some(Boolean)
     )
       throw new CliError(
-        "Use --reset on its own, with --instance or --directory and optionally --source, --terraform-dir, --yes or --json."
+        "Use --reset on its own, with --instance or --directory and optionally --terraform-dir, --yes or --json."
       )
     const json = values.json === true || values["non-interactive"] === true
     const interactive =
       !json && !values.yes && process.stdin.isTTY && process.stdout.isTTY
     const report = await resetInstance({
       directory: location.directory,
-      source,
+      release: releaseResolver(location.directory, request),
       terraform,
       rerun: rerunCommand(location),
       confirm: values.yes
@@ -360,16 +400,13 @@ async function selfhostMain(argv: string[]): Promise<number> {
             configPath: file(values.config),
             credentialsPath: file(values.credentials),
             source,
+            version: values.version,
             terraform,
             action,
             takeOver: values["take-over"],
           })
     process.stdout.write(`${JSON.stringify(report)}\n`)
-    return [
-      "needs_input",
-      "backend_unavailable",
-      "missing_prerequisites",
-    ].includes(report.status)
+    return ["needs_input", "missing_prerequisites"].includes(report.status)
       ? 1
       : 0
   }
@@ -380,43 +417,42 @@ async function selfhostMain(argv: string[]): Promise<number> {
   intro(`azad ${VERSION}`)
   const config = new LocalConfig(location.directory)
   const existing = config.read()
-  const deploySource = source ?? existing.AZAD_CLI_SOURCE
-  const questions = terminalFor(config, { source: deploySource })
+  const questions = terminalFor(config)
   // With a saved target the needed tools are known before the first
   // question; otherwise the wizard checks them right after the target.
   if (existing.AZAD_CLI_TARGET) questions.requireTools?.(wizardNeeds(existing))
-  if (!deploySource) {
+  if (deploymentStarted(existing)) {
+    await resumeOrChangeSettings(config, questions)
+  } else {
     terminal.note(
       "Answers are saved as you go; stop any time and rerun to resume."
     )
-  }
-  if (existing.AZAD_CLI_SOURCE_REVISION) {
-    await resumeOrChangeSettings(config, questions)
-  } else if (await savedConfigurationReady(config.directory)) {
-    // A complete configuration needs no second walk through every question.
-    terminal.note("Your saved settings are complete.")
-    const keep = await questions.confirm(
-      `${deploySource ? "Deploy with them?" : "Keep them?"} (No to change settings)`,
-      true,
-      "useSavedSettings"
-    )
-    if (!keep || !(await completeSavedConfiguration(config.directory)))
+    if (await savedConfigurationReady(config.directory)) {
+      // A complete configuration needs no second walk through every question.
+      terminal.note("Your saved settings are complete.")
+      const keep = await questions.confirm(
+        "Deploy with them? (No to change settings)",
+        true,
+        "useSavedSettings"
+      )
+      if (!keep || !(await completeSavedConfiguration(config.directory)))
+        await configure(config, questions)
+    } else {
       await configure(config, questions)
-  } else {
-    await configure(config, questions)
+    }
   }
-  if (deploySource)
-    await deployInstance(
-      config,
-      { source: deploySource, terraform },
-      questions,
-      undefined,
-      { takeOver: values["take-over"] }
-    )
-  else
-    terminal.note(
-      "Settings saved. To deploy, rerun with --source pointing to a reviewed checkout of the Azad app source."
-    )
+  await deployInstance(
+    config,
+    {
+      release: releaseResolver(location.directory, request, {
+        note: (message) => terminal.note(message),
+      }),
+      terraform,
+    },
+    questions,
+    undefined,
+    { takeOver: values["take-over"] }
+  )
   outro(
     `Configuration kept privately in ${config.envPath}. Run ${rerunCommand(location, source ? ["--source", source] : [])} to resume.`
   )

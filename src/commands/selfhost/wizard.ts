@@ -29,6 +29,7 @@ import {
   CloudflareTokenRejectedError,
   findCloudflareZone,
 } from "./cloudflare-account"
+import { deploymentStarted } from "../update/installation"
 import { verifyCompletedBootstrap } from "./cloudflare-bootstrap"
 import { LocalConfig, readPrivateEnv, serializeEnv } from "./config"
 import {
@@ -82,6 +83,11 @@ export type Field = {
   visibleSecret?: boolean
   privateKeyFile?: boolean
   bootstrapTokenFile?: boolean
+  /**
+   * A domain that must be in the instance's Cloudflare account: a terminal
+   * that holds the bootstrap token looks it up and asks again when it is not.
+   */
+  cloudflareZone?: boolean
   optional?: boolean
   initial?: string
   validate?: (value: string) => string | undefined
@@ -787,23 +793,84 @@ async function provisionGcpProject(values: Record<string, string>) {
   return { AZAD_CLI_GCP_PROJECT: selected }
 }
 
+/** The saved bootstrap token, while setup still holds it; never displayed. */
+function bootstrapToken(values: Record<string, string>): string | undefined {
+  try {
+    return (
+      readPrivateEnv(values.AZAD_CLI_CLOUDFLARE_BOOTSTRAP_FILE ?? "")
+        .CLOUDFLARE_BOOTSTRAP_API_TOKEN || undefined
+    )
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Asks for a domain that must be in the instance's Cloudflare account (the
+ * Mini Apps domain) and, with the bootstrap token at hand, looks up the zone
+ * that holds it: a domain in no zone of the account is asked again. A
+ * subdomain of a zone is accepted with a reminder that its wildcard
+ * certificate needs Advanced Certificate Manager on that zone. Without the
+ * token, or when Cloudflare cannot be asked, the answer is kept as typed.
+ */
+async function cloudflareZoneInput(
+  values: Record<string, string>,
+  field: Field,
+  previous?: string
+): Promise<string> {
+  let saved = previous
+  for (;;) {
+    const domain = await terminal.field(field, saved)
+    const token = bootstrapToken(values)
+    if (!token) return domain
+    const progress = prompts.spinner()
+    progress.start(`Finding ${domain} in Cloudflare`)
+    try {
+      const zone = await findCloudflareZone(token, domain)
+      if (zone.accountId !== values.CLOUDFLARE_ACCOUNT_ID) {
+        progress.error(
+          `${zone.zoneName} is in another Cloudflare account (${zone.accountName}). Use a domain in the same account as ${values.AZAD_CLI_WEB_HOST}.`
+        )
+        saved = undefined
+        continue
+      }
+      if (zone.zoneName === domain) progress.stop(`Mini Apps domain: the zone ${domain}`)
+      else {
+        progress.stop(`Mini Apps domain: ${domain}, in the zone ${zone.zoneName}`)
+        prompts.log.warn(
+          `A subdomain needs Cloudflare's Advanced Certificate Manager on ${zone.zoneName}: Terraform orders its wildcard certificate there. Turn it on before you deploy.`
+        )
+      }
+      if (!zone.active)
+        prompts.log.warn(
+          `${zone.zoneName} is not active in Cloudflare yet. Finish its nameserver setup before deploying.`
+        )
+      return domain
+    } catch (error) {
+      if (error instanceof CloudflareTokenRejectedError || !(error instanceof CliError)) {
+        progress.error("Could not check the domain in Cloudflare; keeping it")
+        return domain
+      }
+      progress.error(error.message)
+      saved = undefined
+    }
+  }
+}
+
 /**
  * Supplies the interactive protected-input boundary, the automatic provider
- * steps and the tool check. With `source` (a deploy follows) the check also
- * covers the deployment tools. Each tool's version is read once per run.
+ * steps and the tool check, which also covers the deployment tools: a deploy
+ * follows the questions. Each tool's version is read once per run.
  */
 export function terminalFor(
   config: LocalConfig,
-  options: { source?: string; execute?: Run } = {}
+  options: { execute?: Run } = {}
 ): Questions {
   const checked = new Map<Tool, ToolProblem[]>()
   return {
     ...terminal,
     requireTools(needs) {
-      const problems = requiredTools({
-        ...needs,
-        deploy: Boolean(options.source),
-      }).flatMap((tool) => {
+      const problems = requiredTools({ ...needs, deploy: true }).flatMap((tool) => {
         const known = checked.get(tool) ?? checkTools([tool], options.execute)
         checked.set(tool, known)
         return known
@@ -814,6 +881,8 @@ export function terminalFor(
         )
     },
     async field(field, previous) {
+      if (field.cloudflareZone)
+        return await cloudflareZoneInput(config.read(), field, previous)
       if (!field.bootstrapTokenFile)
         return await terminal.field(field, previous)
       if (verifyCompletedBootstrap(config.directory, config.read())) {
@@ -858,6 +927,26 @@ const host = (value: string) =>
   /^[a-z0-9]+([.-][a-z0-9]+)+$/u.test(value)
     ? undefined
     : "Use a hostname, such as board.example.com."
+
+/**
+ * Validates the Mini Apps domain for the web host `web`: a hostname that is
+ * neither the web or API host nor contains or sits under either, since Mini
+ * App origins never share a site with Azad.
+ */
+export function miniAppsDomainProblem(
+  value: string,
+  web: string
+): string | undefined {
+  if (host(value)) return "Use a domain, such as apps.example.com."
+  for (const other of [web, `api.${web}`])
+    if (
+      value === other ||
+      value.endsWith(`.${other}`) ||
+      other.endsWith(`.${value}`)
+    )
+      return `Use a domain apart from ${web} and api.${web}: Mini Apps never share a site with Azad.`
+  return undefined
+}
 const digits = (value: string) =>
   /^\d+$/u.test(value) ? undefined : "Use the numeric App ID."
 const cidr = (value: string) => {
@@ -1308,7 +1397,7 @@ export async function configure(
   if (
     values.AZAD_CLI_CLOUDFLARE_AUTH ||
     cloudflareAuth === "bootstrap" ||
-    !values.AZAD_CLI_SOURCE_REVISION
+    !deploymentStarted(values)
   )
     values.AZAD_CLI_CLOUDFLARE_AUTH = cloudflareAuth
   save()
@@ -1341,7 +1430,7 @@ export async function configure(
     await field({
       key: "CLOUDFLARE_API_TOKEN",
       label: "Cloudflare deployment token",
-      help: `Create a scoped token at https://dash.cloudflare.com/profile/api-tokens\n\nPermissions\nAdd one permission per row:\n- Account → Account Settings → Read\n- Account → Workers Scripts → Edit\n- Account → Workers R2 Storage → Edit\n- Account → Queues → Edit\n- Account → Hyperdrive → Edit\n- Account → Cloudflare Pages → Edit${verifiedDatabaseTls ? `\n- Account → SSL and Certificates → ${automaticDatabaseCa ? "Edit" : "Read"}` : ""}\n- Zone → Workers Routes → Edit\n- Zone → Zone → Read\n- Zone → DNS → Edit\n\nAccount Resources\n- Include → Specific account → your account\n\nZone Resources\n- Include → Specific zone → your domain\n\nPaste the token here; it stays in your private local configuration.`,
+      help: `Create a scoped token at https://dash.cloudflare.com/profile/api-tokens\n\nPermissions\nAdd one permission per row:\n- Account → Account Settings → Read\n- Account → Workers Scripts → Edit\n- Account → Workers R2 Storage → Edit\n- Account → Queues → Edit\n- Account → Hyperdrive → Edit\n- Account → Cloudflare Pages → Edit${verifiedDatabaseTls ? `\n- Account → SSL and Certificates → ${automaticDatabaseCa ? "Edit" : "Read"}` : ""}\n- Zone → Workers Routes → Edit\n- Zone → Zone → Read\n- Zone → DNS → Edit\n- Zone → SSL and Certificates → Edit (for Mini Apps on their own domain)\n\nAccount Resources\n- Include → Specific account → your account\n\nZone Resources\n- Include → Specific zone → your domain, and the zone of your Mini Apps domain\n\nPaste the token here; it stays in your private local configuration.`,
       secret: true,
     })
     delete values.AZAD_CLI_CLOUDFLARE_BOOTSTRAP_FILE
@@ -1371,6 +1460,33 @@ export async function configure(
       if (service === "neon" && verifiedDatabaseTls)
         values.AZAD_SELF_HOST_DATABASE_CA = "neon-isrg-root-x1"
     }
+    save()
+  }
+  // On Cloudflare, Mini Apps run inside the API Worker on a domain of their
+  // own; setup routes it (--miniapps-domain). Google Cloud serves them on
+  // the cluster's own apps host, so it asks nothing.
+  if (ownInfrastructure) delete values.AZAD_CLI_MINIAPPS_DOMAIN
+  else {
+    const where = await questions.choose(
+      "Where should Mini Apps run?",
+      [
+        { value: "domain", label: "On their own domain", hint: "recommended" },
+        { value: "none", label: "Not now", hint: "Mini Apps stay off" },
+      ],
+      values.AZAD_CLI_MINIAPPS_DOMAIN === "none" ? "none" : "domain",
+      "miniApps"
+    )
+    if (where === "domain") {
+      if (values.AZAD_CLI_MINIAPPS_DOMAIN === "none")
+        delete values.AZAD_CLI_MINIAPPS_DOMAIN
+      await field({
+        key: "AZAD_CLI_MINIAPPS_DOMAIN",
+        label: "Mini Apps domain (such as apps.example.com)",
+        help: "Mini Apps run on their own domain, apart from Azad, so they never share a site with it: a separate domain in this Cloudflare account (such as example-apps.com) or a subdomain of one of its zones (such as apps.example.com). A subdomain needs Cloudflare's Advanced Certificate Manager on its zone, for the wildcard certificate Terraform orders; a separate domain doesn't.",
+        cloudflareZone: true,
+        validate: (value) => miniAppsDomainProblem(value, web),
+      })
+    } else values.AZAD_CLI_MINIAPPS_DOMAIN = "none"
     save()
   }
   if (!(await provision("clerk"))) {
@@ -1516,29 +1632,11 @@ export async function configure(
     if (native && values.AZAD_CLI_CLERK_NATIVE_API !== "on")
       await provision("clerkNativeApi")
   }
-  // Mini Apps are asked about only when they need a pasted runtime token. The
-  // token bootstrap creates that token, and Google Cloud runs Mini Apps on the
-  // Worker Loader, so those default on and can be turned off under optional
-  // settings.
-  const miniAppsAutomatic = ownInfrastructure || cloudflareAuth === "bootstrap"
-  let miniApps = values.AZAD_SELF_HOST_MINIAPPS !== "disabled"
-  if (!miniAppsAutomatic) {
-    miniApps = await questions.confirm(
-      "Enable Mini Apps?",
-      miniApps,
-      "miniapps"
-    )
-    if (miniApps) {
-      questions.note(
-        "Use a separate runtime token for Workers Scripts and D1 Edit in the same Cloudflare account."
-      )
-      await field({
-        key: "V3_CF_API_TOKEN",
-        label: "Mini App runtime token",
-        secret: true,
-      })
-    }
-  }
+  // Google Cloud runs Mini Apps on the Worker Loader by default; they can be
+  // turned off under optional settings. Cloudflare asked where they run above.
+  let miniApps = ownInfrastructure
+    ? values.AZAD_SELF_HOST_MINIAPPS !== "disabled"
+    : values.AZAD_CLI_MINIAPPS_DOMAIN !== "none"
   // Everything below works with its default, so one switch guards it all.
   // Without the switch each setting keeps its saved answer or default.
   // Automation answers the nested choices by their own keys (see
@@ -1564,7 +1662,9 @@ export async function configure(
   const diskBackupsDefault = values.AZAD_CLI_GCP_DISK_BACKUPS ?? "daily"
   questions.note(
     `Defaults: ${[
-      `Mini Apps ${miniApps ? "on" : "off"}`,
+      ownInfrastructure || !miniApps
+        ? `Mini Apps ${miniApps ? "on" : "off"}`
+        : `Mini Apps on ${values.AZAD_CLI_MINIAPPS_DOMAIN}`,
       ...(cloudflareAuth === "bootstrap"
         ? [
             `meetings ${meetings === "disabled" ? "off" : "on (Cloudflare RealtimeKit)"}`,
@@ -1608,7 +1708,7 @@ export async function configure(
       : diskBackupsDefault
     save()
   }
-  if (optional && miniAppsAutomatic)
+  if (optional && ownInfrastructure)
     miniApps = await questions.confirm(
       "Enable Mini Apps?",
       miniApps,
@@ -1829,21 +1929,17 @@ export async function configure(
     ])
       await field(definition)
   }
-  if (!miniApps) {
-    values.AZAD_SELF_HOST_MINIAPPS = "disabled"
-    delete values.V3_CF_API_TOKEN
-    delete values.V3_CF_ACCOUNT_ID
-    delete values.MINIAPP_PROVIDER
-  } else if (ownInfrastructure) {
-    // Mini Apps run inside the board through the Worker Loader; no Cloudflare
-    // Workers or D1 are involved.
+  // Mini Apps never run as per-app Workers with their own token. On Google
+  // Cloud they run inside the board through the Worker Loader; on Cloudflare
+  // setup derives their settings from --miniapps-domain.
+  delete values.V3_CF_API_TOKEN
+  delete values.V3_CF_ACCOUNT_ID
+  if (!ownInfrastructure) delete values.MINIAPP_PROVIDER
+  else if (miniApps) {
     values.AZAD_SELF_HOST_MINIAPPS = "enabled"
     values.MINIAPP_PROVIDER = "loader"
-    delete values.V3_CF_API_TOKEN
-    delete values.V3_CF_ACCOUNT_ID
   } else {
-    values.AZAD_SELF_HOST_MINIAPPS = "enabled"
-    values.V3_CF_ACCOUNT_ID = values.CLOUDFLARE_ACCOUNT_ID
+    values.AZAD_SELF_HOST_MINIAPPS = "disabled"
     delete values.MINIAPP_PROVIDER
   }
   save()

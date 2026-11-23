@@ -22,6 +22,7 @@ import {
 } from "./automation"
 import { readPrivateEnv, serializeEnv, upsertPrivateEnv } from "./config"
 import type { Run } from "../../process"
+import type { ReleaseResolver } from "./release"
 import type { TerraformSelection } from "./terraform"
 
 const roots: string[] = []
@@ -38,13 +39,14 @@ function fixture() {
   const configPath = join(root, "config.json")
   const credentialsPath = join(root, "private.env")
   const input = {
-    choices: { database: "postgres", miniapps: false },
+    choices: { database: "postgres" },
     fields: {
       AZAD_CLI_WEB_HOST: "board.example.com",
       CLOUDFLARE_ACCOUNT_ID: "b".repeat(32),
       CLERK_PUBLISHABLE_KEY: "pk_fixture",
       GITHUB_APP_ID: "123",
-    },
+      AZAD_CLI_MINIAPPS_DOMAIN: "example-apps.com",
+    } as Record<string, string>,
   }
   const credentials = {
     CLOUDFLARE_API_TOKEN: "fixture-token-never-log",
@@ -71,6 +73,8 @@ function fixture() {
     input,
     credentials,
     terraform,
+    /** The release deploys install; {@link backend} provides one. */
+    release: undefined as ReleaseResolver | undefined,
   }
 }
 
@@ -187,15 +191,13 @@ test("status refuses unsafe credential files without changing permissions or fol
 })
 
 /**
- * An app source checkout and azad-terraform drivers whose Cloudflare driver
- * keeps the installation's files in the instance directory
- * (`terraform/postgres`) and adds what setup derives to the instance's
- * settings file.
+ * A prepared release (it becomes `f.release`) and azad-terraform drivers
+ * whose Cloudflare driver keeps the installation's files in the instance
+ * directory (`terraform/postgres`) and adds what setup derives to the
+ * instance's settings file.
  */
 function backend(f: ReturnType<typeof fixture>) {
-  const source = join(f.root, "source")
   const files = join(f.directory, "terraform", "postgres")
-  mkdirSync(join(source, "node_modules"), { recursive: true })
   const drivers = f.terraform.directory
   mkdirSync(join(drivers, "scripts"), { recursive: true })
   mkdirSync(join(drivers, "node_modules"))
@@ -206,10 +208,16 @@ function backend(f: ReturnType<typeof fixture>) {
     )
   const operations: string[] = []
   let sourceRevision = "a".repeat(40)
+  const release: ReleaseResolver = async () => ({
+    directory: join(f.root, "release"),
+    version: sourceRevision === "a".repeat(40) ? "5.30.0" : "5.31.0",
+    sourceSha: sourceRevision,
+    signed: true,
+  })
+  f.release = release
   const execute: Run = (command, args) => {
     expect(args.join(" ")).not.toContain("fixture-token-never-log")
-    if (command === "git" && args[0] === "rev-parse")
-      return { status: 0, stdout: sourceRevision }
+    expect(command).not.toBe("git")
     if (args[0] === "--version" || args[0] === "version")
       return { status: 0, stdout: "99.0.0" }
     const operation = args[2]
@@ -235,26 +243,26 @@ function backend(f: ReturnType<typeof fixture>) {
     return { status: 0, stdout: "secret-bearing-backend-output" }
   }
   return {
-    source,
     files,
     execute,
     operations,
+    /** A newer release the installation moves to. */
     changeRevision() {
       sourceRevision = "c".repeat(40)
     },
   }
 }
 
-test("explicit plan and apply reuse the backend, source binding and generated keys", async () => {
+test("explicit plan and apply reuse the backend, release binding and generated keys", async () => {
   const f = fixture()
   const b = backend(f)
   expect(
-    await runAutomation({ ...f, source: b.source, action: "plan" }, b.execute)
+    await runAutomation({ ...f, action: "plan" }, b.execute)
   ).toEqual({ status: "planned", issues: [] })
   expect(b.operations).toEqual(["setup", "init", "plan"])
   const saved = parse(readFileSync(join(f.directory, ".env")))
   expect(saved.GITHUB_WEBHOOK_SECRET).toBe("fixture-generated-secret")
-  // Ordinary automation must not deploy just because a source was saved.
+  // Ordinary automation must not deploy just because a release was recorded.
   expect(
     await runAutomation(
       { directory: f.directory, action: "configure" },
@@ -269,13 +277,18 @@ test("explicit plan and apply reuse the backend, source binding and generated ke
   expect(readFileSync(join(b.files, "terraform.tfstate"), "utf8")).toBe(
     "customer-state"
   )
+  expect(parse(readFileSync(join(f.directory, ".env"))).AZAD_CLI_RELEASE_VERSION).toBe("5.30.0")
+  // A move to a newer release is refreshed into the variables, then planned.
   b.changeRevision()
-  await expect(
-    runAutomation(
-      { directory: f.directory, terraform: f.terraform, action: "apply" },
+  b.operations.length = 0
+  expect(
+    await runAutomation(
+      { directory: f.directory, terraform: f.terraform, release: f.release, action: "apply" },
       b.execute
     )
-  ).rejects.toThrow("another source revision")
+  ).toEqual({ status: "applied", issues: [] })
+  expect(b.operations).toEqual(["refresh", "init", "plan", "apply", "deploy"])
+  expect(parse(readFileSync(join(f.directory, ".env"))).AZAD_CLI_RELEASE_VERSION).toBe("5.31.0")
   expect(readFileSync(join(b.files, "terraform.tfstate"), "utf8")).toBe(
     "customer-state"
   )
@@ -284,7 +297,7 @@ test("explicit plan and apply reuse the backend, source binding and generated ke
 test("bound instance settings cannot be silently changed by a new config file", async () => {
   const f = fixture()
   const b = backend(f)
-  await runAutomation({ ...f, source: b.source, action: "plan" }, b.execute)
+  await runAutomation({ ...f, action: "plan" }, b.execute)
   const before = readFileSync(join(f.directory, ".env"), "utf8")
   f.input.fields.AZAD_CLI_WEB_HOST = "different.example.com"
   writeFileSync(f.configPath, JSON.stringify(f.input))
@@ -315,7 +328,7 @@ test("failed backend commands discard provider output and preserve private check
       ? { status: 1, stdout: "fixture-leaked-token" }
       : b.execute(command, args, cwd, capture)
   await expect(
-    runAutomation({ ...f, source: b.source, action: "apply" }, fail)
+    runAutomation({ ...f, action: "apply" }, fail)
   ).rejects.toThrow("deployment helper stopped")
   expect(
     parse(readFileSync(join(f.directory, ".env"))).GITHUB_APP_PRIVATE_KEY
@@ -407,7 +420,7 @@ test("CA IDs are discoverable for verified PostgreSQL and cannot be silently ign
   expect(existsSync(f.directory)).toBe(false)
 })
 
-test("bound Neon setup compares effective settings without weakening the source lock", async () => {
+test("bound Neon setup compares effective settings without weakening the release lock", async () => {
   const f = fixture()
   const input = {
     choices: { ...f.input.choices, database: "neon" },
@@ -423,7 +436,8 @@ test("bound Neon setup compares effective settings without weakening the source 
   await runAutomation({ ...f, action: "configure" }, noBackend)
   const envPath = join(f.directory, ".env")
   const saved = parse(readFileSync(envPath))
-  saved.AZAD_CLI_SOURCE_REVISION = "a".repeat(40)
+  saved.AZAD_CLI_RELEASE_VERSION = "5.30.0"
+  saved.AZAD_CLI_RELEASE_SHA = "a".repeat(40)
   writeFileSync(envPath, serializeEnv(saved))
   const before = readFileSync(envPath, "utf8")
   expect(await runAutomation({ ...f, action: "status" }, noBackend)).toEqual({
@@ -522,7 +536,6 @@ test("one bootstrap credential stays in its own private file during configuratio
       choices: {
         database: "postgres",
         cloudflareAuth: "bootstrap",
-        miniapps: true,
       },
       fields: {
         ...f.input.fields,
@@ -547,8 +560,10 @@ test("one bootstrap credential stays in its own private file during configuratio
   expect(saved.AZAD_CLI_CLOUDFLARE_BOOTSTRAP_FILE).toBe(bootstrapPath)
   expect(saved.CLOUDFLARE_BOOTSTRAP_API_TOKEN).toBeUndefined()
   expect(saved.CLOUDFLARE_API_TOKEN).toBeUndefined()
+  // Mini Apps never get a per-app Workers token.
   expect(saved.V3_CF_API_TOKEN).toBeUndefined()
-  expect(saved.V3_CF_ACCOUNT_ID).toBe(f.input.fields.CLOUDFLARE_ACCOUNT_ID)
+  expect(saved.V3_CF_ACCOUNT_ID).toBeUndefined()
+  expect(saved.AZAD_CLI_MINIAPPS_DOMAIN).toBe("example-apps.com")
   expect(readFileSync(join(f.directory, ".env"), "utf8")).not.toContain(
     "fixture-root-secret"
   )
@@ -578,7 +593,8 @@ test("older bound manual-token configurations need no new authentication choice"
   const envPath = join(f.directory, ".env")
   const saved = parse(readFileSync(envPath))
   delete saved.AZAD_CLI_CLOUDFLARE_AUTH
-  saved.AZAD_CLI_SOURCE_REVISION = "a".repeat(40)
+  saved.AZAD_CLI_RELEASE_VERSION = "5.30.0"
+  saved.AZAD_CLI_RELEASE_SHA = "a".repeat(40)
   writeFileSync(envPath, serializeEnv(saved))
   const before = readFileSync(envPath, "utf8")
   expect(await runAutomation({ ...f, action: "status" }, noBackend)).toEqual({
@@ -612,8 +628,6 @@ test("noninteractive apply authorizes token bootstrap while plan remains a permi
   writeFileSync(f.credentialsPath, serializeEnv(credentials))
   let applied = false
   const execute: Run = (command, args, cwd, capture) => {
-    if (command === "git" && args[0] === "merge-base")
-      return { status: 0, stdout: "" }
     if (args[1]?.endsWith("/scripts/bootstrap.ts")) {
       if (args[2] === "apply") {
         applied = true
@@ -635,16 +649,16 @@ test("noninteractive apply authorizes token bootstrap while plan remains a permi
     return b.execute(command, args, cwd, capture)
   }
   expect(
-    await runAutomation({ ...f, source: b.source, action: "plan" }, execute)
+    await runAutomation({ ...f, action: "plan" }, execute)
   ).toEqual({ status: "bootstrap_planned", issues: [] })
   expect(applied).toBe(false)
   await expect(
-    runAutomation({ ...f, source: b.source, action: "apply" }, execute)
+    runAutomation({ ...f, action: "apply" }, execute)
   ).rejects.toThrow("Cloudflare token setup stopped")
   expect(applied).toBe(true)
   applied = false
   await expect(
-    runAutomation({ ...f, source: b.source, action: "bootstrap" }, execute)
+    runAutomation({ ...f, action: "bootstrap" }, execute)
   ).rejects.toThrow("Cloudflare token setup stopped")
   expect(applied).toBe(true)
 })
@@ -686,19 +700,19 @@ test("configs written before the optional-settings switch keep their meaning", a
   const saved = () => parse(readFileSync(join(f.directory, ".env")))
   // Older keys answer the nested choices directly; the switch follows them.
   const legacy = await configure({
-    miniapps: false,
+    managedSource: false,
     optionalServices: true,
     email: true,
     advanced: true,
   })
   expect(legacy).toEqual({ status: "configuration_saved", issues: [] })
-  expect(saved().AZAD_SELF_HOST_MINIAPPS).toBe("disabled")
+  expect(saved().AZAD_CLI_MANAGED_SOURCE).toBe("disabled")
   expect(saved().RESEND_API_KEY).toBe("fixture-resend")
   expect(saved().SENTRY_ENVIRONMENT).toBe("production")
   // An explicit "off" switch makes the nested answers inactive.
-  const off = await configure({ optionalSettings: false, miniapps: false })
+  const off = await configure({ optionalSettings: false, managedSource: false })
   expect(off.issues).toContainEqual({
-    field: "miniapps",
+    field: "managedSource",
     problem: "inactive",
   })
   const schema = await automationSchema()
@@ -706,7 +720,7 @@ test("configs written before the optional-settings switch keep their meaning", a
     initial: false,
   })
   expect(Object.keys(schema.providers.neon.choices)).toEqual(
-    expect.arrayContaining(["miniapps", "optionalServices", "advanced"])
+    expect.arrayContaining(["managedSource", "optionalServices", "advanced"])
   )
 })
 
@@ -766,4 +780,68 @@ test("your own bucket is configurable without prompts, its keys only from the pr
   expect(saved.STORAGE_BUCKET).toBe("azad-files")
   expect(saved.STORAGE_SECRET_ACCESS_KEY).toBe("fixture-storage-secret")
   expect(JSON.stringify(result)).not.toContain("fixture-storage-secret")
+})
+
+test("on Cloudflare the Mini Apps domain is a field and Not now a choice; Google Cloud asks neither", async () => {
+  const schema = await automationSchema()
+  expect(schema.providers.neon.choices.miniApps).toMatchObject({
+    values: ["domain", "none"],
+    initial: "domain",
+  })
+  expect(schema.providers.neon.fields.AZAD_CLI_MINIAPPS_DOMAIN).toMatchObject({
+    secret: false,
+    optional: false,
+  })
+  expect(schema.googleCloud.choices.miniApps).toBeUndefined()
+  expect(schema.googleCloud.fields.AZAD_CLI_MINIAPPS_DOMAIN).toBeUndefined()
+  const f = fixture()
+  const status = async (
+    choices: Record<string, string>,
+    fields: Record<string, string>
+  ) => {
+    writeFileSync(
+      f.configPath,
+      JSON.stringify({ choices: { ...f.input.choices, ...choices }, fields })
+    )
+    return await runAutomation({ ...f, action: "status" }, noBackend)
+  }
+  const { AZAD_CLI_MINIAPPS_DOMAIN: _domain, ...fields } = f.input.fields
+  // The recommended default needs the domain.
+  expect((await status({}, fields)).issues).toContainEqual({
+    field: "AZAD_CLI_MINIAPPS_DOMAIN",
+    problem: "missing",
+  })
+  // A domain that shares a site with Azad is refused; a subdomain of the
+  // same zone is not.
+  for (const domain of ["board.example.com", "apps.board.example.com", "example.com", "x.api.board.example.com"])
+    expect(
+      (await status({}, { ...fields, AZAD_CLI_MINIAPPS_DOMAIN: domain })).issues
+    ).toContainEqual({ field: "AZAD_CLI_MINIAPPS_DOMAIN", problem: "invalid" })
+  expect(
+    (await status({}, { ...fields, AZAD_CLI_MINIAPPS_DOMAIN: "apps.example.com" }))
+      .status
+  ).toBe("configuration_ready")
+  // Not now saves none; a domain beside it is inactive.
+  expect((await status({ miniApps: "none" }, fields)).status).toBe(
+    "configuration_ready"
+  )
+  expect(
+    (await status({ miniApps: "none" }, f.input.fields)).issues
+  ).toContainEqual({ field: "AZAD_CLI_MINIAPPS_DOMAIN", problem: "inactive" })
+  writeFileSync(
+    f.configPath,
+    JSON.stringify({ choices: { ...f.input.choices, miniApps: "none" }, fields })
+  )
+  await runAutomation({ ...f, action: "configure" }, noBackend)
+  expect(parse(readFileSync(join(f.directory, ".env"))).AZAD_CLI_MINIAPPS_DOMAIN).toBe("none")
+})
+
+test("a plan records the release it deploys, never a checkout", async () => {
+  const f = fixture()
+  const b = backend(f)
+  await runAutomation({ ...f, action: "plan" }, b.execute)
+  const saved = parse(readFileSync(join(f.directory, ".env")))
+  expect(saved.AZAD_CLI_SOURCE).toBeUndefined()
+  expect(saved.AZAD_CLI_SOURCE_REVISION).toBeUndefined()
+  expect(saved.AZAD_CLI_RELEASE_SHA).toBe("a".repeat(40))
 })

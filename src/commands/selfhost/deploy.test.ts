@@ -14,12 +14,9 @@ import { parse } from "dotenv"
 import { LocalConfig, serializeEnv, upsertPrivateEnv } from "./config"
 import { saveBootstrapToken } from "./bootstrap-credentials"
 import type { Run } from "../../process"
-import {
-  backupKeys,
-  deployInstance,
-  instanceTerraformDirectory,
-  type DeploySources,
-} from "./deploy"
+import { backupKeys, deployInstance, type DeploySources } from "./deploy"
+import { instanceTerraformDirectory } from "./instance"
+import { fakeReleaseDirectory } from "../../../test/fake-release"
 import { fakeCloudflare } from "./realtimekit-fixture"
 import type { Questions } from "./wizard"
 
@@ -31,13 +28,20 @@ afterEach(() => {
 const revision = "a".repeat(40)
 
 /**
- * The app source checkout (its Git commit comes from the fake `git`) and a
- * local azad-terraform checkout with the three drivers, both with
- * dependencies installed.
+ * A prepared release (Azad 5.30.0, built from `revision`), and a local
+ * azad-terraform checkout with the three drivers and its dependencies. The
+ * resolver records each call.
  */
-function checkouts(root: string): DeploySources {
-  const source = join(root, "source")
-  mkdirSync(join(source, "node_modules"), { recursive: true })
+function checkouts(root: string): DeploySources & {
+  directory: string
+  resolved: Record<string, string>[]
+} {
+  const release = fakeReleaseDirectory(join(root, "release"), {
+    version: "5.30.0",
+    sourceSha: revision,
+    signed: true,
+  })
+  const resolved: Record<string, string>[] = []
   const terraform = join(root, "azad-terraform")
   mkdirSync(join(terraform, "scripts"), { recursive: true })
   mkdirSync(join(terraform, "node_modules"))
@@ -46,7 +50,15 @@ function checkouts(root: string): DeploySources {
       join(terraform, "scripts", `${driver}.ts`),
       "// azad-terraform driver fixture"
     )
-  return { source, terraform: { kind: "local", directory: terraform } }
+  return {
+    directory: release.directory,
+    resolved,
+    release: async (values) => {
+      resolved.push(values)
+      return release
+    },
+    terraform: { kind: "local", directory: terraform },
+  }
 }
 
 /** True when `args` run the named azad-terraform driver. */
@@ -58,7 +70,7 @@ const operation = (args: string[]) =>
   args.slice(
     2,
     args.findIndex((arg) =>
-      ["--root", "--source", "--instance-dir"].includes(arg)
+      ["--root", "--release", "--instance-dir"].includes(arg)
     )
   )
 
@@ -75,6 +87,7 @@ function fixture(provider: "cloudsql" | "postgres", adc = true) {
     AZAD_CLI_GCP_PROJECT: "customer-project",
     AZAD_CLI_GCP_REGION: "europe-west1",
     AZAD_CLI_RUNNER_CIDR: "203.0.113.1/32",
+    AZAD_CLI_MINIAPPS_DOMAIN: "example-apps.com",
   })
   const files = instanceTerraformDirectory(config.directory, config.read())
   const notes: string[] = []
@@ -90,8 +103,8 @@ function fixture(provider: "cloudsql" | "postgres", adc = true) {
   }
   const execute: Run = (command, args) => {
     argv.push(args)
-    if (command === "git" && args[0] === "rev-parse")
-      return { status: 0, stdout: revision }
+    // A deploy needs no checkout: Git never runs.
+    expect(command).not.toBe("git")
     if (args[0] === "--version" || args[0] === "version")
       return { status: 0, stdout: "999.0.0" }
     if (command === "gcloud") return { status: adc ? 0 : 1, stdout: "" }
@@ -170,6 +183,8 @@ test("a deploy stops before any helper runs while a deployment tool is missing, 
     "These tools are missing or too old. Please install them, then run azad again:\n- Terraform 1.13.4 or newer (not installed): https://developer.hashicorp.com/terraform/install",
   ])
   expect(f.operations).toEqual([])
+  // Nothing is downloaded before the tools are there.
+  expect(f.sources.resolved).toEqual([])
 })
 
 test("Cloud SQL without Application Default Credentials stops before any helper runs", async () => {
@@ -214,37 +229,34 @@ test("declining a plan retains configuration and does not apply", async () => {
     Promise.resolve(!message.startsWith("Apply"))
   await deployInstance(f.config, f.sources, f.questions, f.execute)
   expect(f.operations).not.toContain("apply")
-  expect(f.config.read().AZAD_CLI_SOURCE_REVISION).toBe(revision)
+  expect(f.config.read().AZAD_CLI_RELEASE_SHA).toBe(revision)
+  expect(f.config.read().AZAD_CLI_RELEASE_VERSION).toBe("5.30.0")
 })
 
-test("a changed source revision cannot reset a previously configured instance", async () => {
+test("setup is told where Mini Apps run, and a move to another release is refreshed into the variables before planning", async () => {
   const f = fixture("postgres")
-  f.config.save({
-    ...f.config.read(),
-    AZAD_CLI_SOURCE_REVISION: "c".repeat(40),
-  })
-  await expect(
-    deployInstance(f.config, f.sources, f.questions, f.execute)
-  ).rejects.toThrow("another source revision")
-  expect(f.operations).toEqual([])
+  await deployInstance(f.config, f.sources, f.questions, f.execute)
+  const setup = f.argv.find((args) => args[2] === "setup") ?? []
+  expect(setup[setup.indexOf("--miniapps-domain") + 1]).toBe("example-apps.com")
+  expect(f.operations).not.toContain("refresh")
+  // The installation moved on (azad update or a console update) since setup.
+  const vars = join(f.files, "terraform.tfvars.json")
+  const written = JSON.parse(readFileSync(vars, "utf8"))
+  written.deployment.revision = "c".repeat(40)
+  writeFileSync(vars, JSON.stringify(written))
+  f.operations.length = 0
+  await deployInstance(f.config, f.sources, f.questions, f.execute)
+  expect(f.operations).toEqual(["refresh", "init", "plan", "apply", "deploy"])
+  // The resolver sees the saved settings, which record the release deployed.
+  expect(f.sources.resolved.at(-1)?.AZAD_CLI_RELEASE_SHA).toBe(revision)
 })
 
-test("verified database TLS refuses a backend without the reviewed CA support before setup", async () => {
+test("Mini Apps turned off reach setup as none", async () => {
   const f = fixture("postgres")
-  f.config.save({
-    ...f.config.read(),
-    AZAD_SELF_HOST_DATABASE_CA_CERT_ID: "fixture-ca",
-  })
-  const before = readFileSync(f.config.envPath, "utf8")
-  const oldBackend: Run = (command, args, cwd, capture) =>
-    command === "git" && args[0] === "merge-base"
-      ? { status: 1, stdout: "" }
-      : f.execute(command, args, cwd, capture)
-  await expect(
-    deployInstance(f.config, f.sources, f.questions, oldBackend)
-  ).rejects.toThrow("certificate-verified database TLS")
-  expect(f.operations).toEqual([])
-  expect(readFileSync(f.config.envPath, "utf8")).toBe(before)
+  f.config.save({ ...f.config.read(), AZAD_CLI_MINIAPPS_DOMAIN: "none" })
+  await deployInstance(f.config, f.sources, f.questions, f.execute)
+  const setup = f.argv.find((args) => args[2] === "setup") ?? []
+  expect(setup[setup.indexOf("--miniapps-domain") + 1]).toBe("none")
 })
 
 function bootstrapFixture() {
@@ -262,8 +274,6 @@ function bootstrapFixture() {
   })
   const execute: Run = (command, args, cwd, capture) => {
     expect(args.join(" ")).not.toContain("fixture-root-secret")
-    if (command === "git" && args[0] === "merge-base")
-      return { status: 0, stdout: "" }
     if (!runs(args, "bootstrap")) {
       if (args[2] === "setup") {
         const credentials = readFileSync(
@@ -416,24 +426,6 @@ test("creating tokens alone returns before workload setup or apply", async () =>
   )
 })
 
-test("automatic Neon CA refuses an older backend before token or workload setup", async () => {
-  const f = fixture("postgres")
-  f.config.save({
-    ...f.config.read(),
-    DATABASE_URL:
-      "postgresql://u:p@ep-fixture.neon.tech/db?sslmode=verify-full",
-    AZAD_SELF_HOST_DATABASE_CA: "neon-isrg-root-x1",
-  })
-  const old: Run = (command, args, cwd, capture) =>
-    command === "git" && args[0] === "merge-base"
-      ? { status: 1, stdout: "" }
-      : f.execute(command, args, cwd, capture)
-  await expect(
-    deployInstance(f.config, f.sources, f.questions, old)
-  ).rejects.toThrow("automatic Neon certificate registration")
-  expect(f.operations).toEqual([])
-})
-
 /**
  * A Google Cloud instance whose checkout's `gcp.ts` reports `phases` (the
  * cluster first, then everything else, on a first install) and records each
@@ -468,8 +460,7 @@ function googleCloudFixture(adc = true) {
   }
   const execute: Run = (command, args) => {
     calls.push({ command, args })
-    if (command === "git" && args[0] === "rev-parse")
-      return { status: 0, stdout: revision }
+    expect(command).not.toBe("git")
     if (args[0] === "--version" || args[0] === "version")
       return { status: 0, stdout: "Google Cloud SDK 591.0.0" }
     if (command === "gcloud") return { status: adc ? 0 : 1, stdout: "" }
@@ -549,7 +540,8 @@ test("Google Cloud: setup writes the variables, then each plan is shown and appl
   )
   expect(JSON.stringify(f.calls)).not.toContain("-auto-approve")
   expect(JSON.stringify(f.calls)).not.toContain("fixture-secret")
-  expect(f.config.read().AZAD_CLI_SOURCE_REVISION).toBe(revision)
+  expect(helper[0].args).not.toContain("--miniapps-domain")
+  expect(f.config.read().AZAD_CLI_RELEASE_SHA).toBe(revision)
   expect(f.notes.at(-1)).toContain("https://board.example.com")
   expect(f.notes.at(-1)).toContain(
     `azad --backup-keys DIR --directory ${f.config.directory}`
@@ -721,7 +713,7 @@ test("meetings turned on after setup reach the settings file the deploy reads; a
   expect(settings.CLOUDFLARE_REALTIMEKIT_APP_ID).toBe(api.apps[0].id)
 })
 
-test("Cloudflare drivers run from azad-terraform with the root name, and --source only where they deploy", async () => {
+test("Cloudflare drivers run from azad-terraform with the root name, and --release only where they deploy", async () => {
   const cases = [
     { provider: "postgres", f: bootstrapFixture() },
     { provider: "cloudsql", f: fixture("cloudsql") },
@@ -755,22 +747,22 @@ test("Cloudflare drivers run from azad-terraform with the root name, and --sourc
         f.config.directory,
       ])
       expect(call.args[call.args.indexOf("--root") + 1]).toBe(provider)
-      // Every one of these, init too: it moves a release-0.0.x local state
-      // under the installation's operation record.
-      expect(call.args[call.args.indexOf("--source") + 1]).toBe(
-        f.sources.source
+      // Every one of these, init too: it holds the operation record.
+      expect(call.args[call.args.indexOf("--release") + 1]).toBe(
+        f.sources.directory
       )
+      expect(call.args).not.toContain("--source")
     }
     const bootstrap = calls.filter((call) => runs(call.args, "bootstrap"))
     expect(bootstrap.map((call) => call.args[2])).toEqual(
       provider === "postgres" ? ["plan", "apply"] : []
     )
     for (const call of bootstrap)
-      expect(call.args.slice(-2)).toEqual(["--source", f.sources.source])
+      expect(call.args.slice(-2)).toEqual(["--release", f.sources.directory])
   }
 })
 
-test("Google Cloud drivers take no --root, and --source only for setup, init, plan, apply and deploy", async () => {
+test("Google Cloud drivers take no --root, and --release only for setup, init, plan, apply and deploy", async () => {
   const f = googleCloudFixture()
   await deployInstance(f.config, f.sources, f.questions, f.execute, {
     waitForClerk: false,
@@ -778,7 +770,7 @@ test("Google Cloud drivers take no --root, and --source only for setup, init, pl
   const helper = f.calls.filter((call) => runs(call.args, "gcp"))
   for (const call of helper) {
     expect(call.args).not.toContain("--root")
-    expect(call.args.includes("--source")).toBe(
+    expect(call.args.includes("--release")).toBe(
       ["setup", "init", "plan", "apply", "deploy"].includes(call.args[2])
     )
   }
@@ -792,17 +784,17 @@ test("Google Cloud drivers take no --root, and --source only for setup, init, pl
   )
 })
 
-test("a --source that is not a Git checkout stops before azad-terraform is prepared or any driver runs", async () => {
+test("a release that cannot be prepared stops before azad-terraform is prepared or any driver runs", async () => {
   const f = fixture("postgres")
   const calls: string[][] = []
-  const notGit: Run = (command, args, cwd, capture) => {
+  const recording: Run = (command, args, cwd, capture) => {
     calls.push([command, ...args])
-    return command === "git" && args[0] === "rev-parse"
-      ? { status: 128, stdout: "" }
-      : f.execute(command, args, cwd, capture)
+    return f.execute(command, args, cwd, capture)
   }
-  const release: DeploySources = {
-    source: f.sources.source,
+  const unavailable: DeploySources = {
+    release: async () => {
+      throw new Error("Could not reach https://api.azad.pro/api/v3/releases/latest.json.")
+    },
     terraform: {
       kind: "release",
       version: "0.0.1",
@@ -811,30 +803,18 @@ test("a --source that is not a Git checkout stops before azad-terraform is prepa
     },
   }
   await expect(
-    deployInstance(f.config, release, f.questions, notGit, {
+    deployInstance(f.config, unavailable, f.questions, recording, {
       fetcher: () => {
         throw new Error("Unexpected download")
       },
     })
-  ).rejects.toThrow("must be a Git checkout with a readable commit")
-  expect(
-    calls.filter(
-      ([command, first]) =>
-        command === "tar" || (command === "bun" && first !== "--version")
-    )
-  ).toEqual([])
-  await expect(
-    deployInstance(
-      f.config,
-      { ...f.sources, source: join(f.root, "missing") },
-      f.questions,
-      f.execute
-    )
-  ).rejects.toThrow("must be a Git checkout")
+  ).rejects.toThrow("Could not reach")
+  // Only the tool check ran.
+  expect(calls.filter(([, first]) => first !== "--version" && first !== "version")).toEqual([])
   expect(f.operations).toEqual([])
 })
 
-test("--backup-keys runs the drivers' backup-keys with the deployed source, and only for a deployed instance", async () => {
+test("--backup-keys runs the drivers' backup-keys with the installation's release, and only for a deployed instance", async () => {
   const f = fixture("postgres")
   const out = join(f.config.directory, "..", "keys")
   await expect(
@@ -845,7 +825,11 @@ test("--backup-keys runs the drivers' backup-keys with the deployed source, and 
     calls.push([command, ...args])
     return { status: 0, stdout: "" }
   }
-  const deployed = { ...f.config.read(), AZAD_CLI_SOURCE_REVISION: revision }
+  const deployed = {
+    ...f.config.read(),
+    AZAD_CLI_RELEASE_VERSION: "5.30.0",
+    AZAD_CLI_RELEASE_SHA: revision,
+  }
   expect(
     await backupKeys(f.config.directory, deployed, f.sources, out, execute)
   ).toBe(out)
@@ -856,8 +840,8 @@ test("--backup-keys runs the drivers' backup-keys with the deployed source, and 
     out,
     "--root",
     "postgres",
-    "--source",
-    f.sources.source,
+    "--release",
+    f.sources.directory,
     "--instance-dir",
     f.config.directory,
   ])

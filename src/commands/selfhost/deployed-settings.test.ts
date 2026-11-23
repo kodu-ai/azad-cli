@@ -25,6 +25,7 @@ const answers: Record<string, string> = {
     "postgresql://azad:fixture-db-password@db.example.com/azad?sslmode=require",
   AZAD_CLI_GCP_PROJECT: "customer-project",
   AZAD_CLI_GCP_REGION: "europe-west1",
+  AZAD_CLI_MINIAPPS_DOMAIN: "example-apps.com",
   CLERK_PUBLISHABLE_KEY: publishableKey,
   GITHUB_APP_PRIVATE_KEY:
     "-----BEGIN PRIVATE KEY-----\nfixture-only\n-----END PRIVATE KEY-----\n",
@@ -57,8 +58,8 @@ async function deployedInstance(target: "cloudflare" | "gcp") {
   })
   config.save({
     ...config.read(),
-    AZAD_CLI_SOURCE_REVISION: "a".repeat(40),
-    AZAD_CLI_SOURCE: join(root, "source"),
+    AZAD_CLI_RELEASE_VERSION: "5.30.0",
+    AZAD_CLI_RELEASE_SHA: "a".repeat(40),
   })
   writeFileSync(
     config.envPath,
@@ -130,11 +131,16 @@ test("Change settings asks again with the saved answers prefilled and saves only
     "DATABASE_URL",
     "AZAD_CLI_WEB_HOST",
     "CLOUDFLARE_ACCOUNT_ID",
-    "miniapps",
+    "miniApps",
+    "AZAD_CLI_MINIAPPS_DOMAIN",
   ])
     expect(p.offered.has(key)).toBe(false)
   const notes = p.notes.join("\n")
   expect(notes).toContain("Azad web hostname: board.example.com (fixed)")
+  expect(notes).toContain("Where should Mini Apps run: On their own domain (fixed)")
+  expect(notes).toContain(
+    "Mini Apps domain (such as apps.example.com): example-apps.com (fixed)"
+  )
   expect(notes).toContain("Direct PostgreSQL connection URL: saved (fixed)")
   expect(notes).toContain("azad --reset")
   expect(notes).not.toContain("fixture-db-password")
@@ -224,7 +230,7 @@ test("a fixed setting that is changed or removed is named, never its value; one 
     AZAD_CLI_DATABASE_SERVICE: "neon",
     AZAD_CLI_DATABASE_PROVIDER: "postgres",
     AZAD_CLI_WEB_HOST: "board.example.com",
-    AZAD_SELF_HOST_MINIAPPS: "enabled",
+    AZAD_CLI_MINIAPPS_DOMAIN: "example-apps.com",
     DATABASE_URL: "postgresql://azad:fixture-db-password@ep-x.neon.tech/azad",
   }
   expect(
@@ -233,11 +239,11 @@ test("a fixed setting that is changed or removed is named, never its value; one 
       AZAD_CLI_DATABASE_SERVICE: "cloudsql",
       AZAD_CLI_DATABASE_PROVIDER: "cloudsql",
       AZAD_CLI_WEB_HOST: "other.example.com",
-      AZAD_SELF_HOST_MINIAPPS: "disabled",
+      AZAD_CLI_MINIAPPS_DOMAIN: "none",
       DATABASE_URL: "",
       AZAD_CLI_GCP_DISK_BACKUPS: "daily",
     })
-  ).toEqual(["database", "DATABASE_URL", "AZAD_CLI_WEB_HOST", "miniapps"])
+  ).toEqual(["database", "DATABASE_URL", "AZAD_CLI_WEB_HOST", "miniApps"])
   // Google Cloud runs Mini Apps without a Cloudflare token, so they can change.
   expect(
     fixedSettingChanges(

@@ -3,9 +3,11 @@
 Azad runs in your own Google Cloud project on GKE Autopilot, with no Cloudflare
 runtime. Cloudflare only serves DNS for your domain. You bring a billed Google
 Cloud project, a domain on Cloudflare, a Clerk account and a GitHub account. One
-`terraform apply` creates the infrastructure and deploys Azad. The `azad`
-setup wizard gathers the credentials Terraform cannot create and runs that
-apply with [azad-terraform](https://github.com/kodu-ai/azad-terraform).
+`terraform apply` creates the infrastructure, and a deploy step installs Azad
+on it. The `azad` setup wizard gathers the credentials Terraform cannot
+create, downloads the signed Azad release and runs both with
+[azad-terraform](https://github.com/kodu-ai/azad-terraform). You need no
+access to Azad's source code.
 
 For Azad on Cloudflare instead, see [Install Azad on Cloudflare](install-cloudflare.md).
 
@@ -46,9 +48,9 @@ limited to Realtime, unless you turn meetings off under optional settings.
   Kubernetes Engine Admin and Secret Manager Secret Accessor).
 - The domain's zone in your Cloudflare account. Any hostname depth works; for
   example, `azad.team.example.com`.
-- Tools: Git, Bun 1.4.4+, Node 26.12.1+ (with npm), Terraform 1.13.4+ and the
-  [gcloud CLI](https://cloud.google.com/sdk/docs/install). Run `azad --doctor` to
-  list any that are missing.
+- Tools: Bun 1.4.4+, Terraform 1.13.4+, curl, tar, Node.js 20+ with npm (for
+  the Clerk CLI) and the [gcloud CLI](https://cloud.google.com/sdk/docs/install).
+  Run `azad --doctor` to list any that are missing.
 - Google credentials for Terraform:
 
   ```sh
@@ -57,9 +59,8 @@ limited to Realtime, unless you turn meetings off under optional settings.
 
   Allow every access the consent screen asks for. If you skip this, `azad`
   stops before changing anything and tells you to run it.
-- On Windows, install from WSL (Ubuntu), with the Azad source checkout in
-  WSL's own file system rather than under `/mnt/c`: the deploy's Terraform
-  steps need a Linux shell.
+- On Windows, install from WSL (Ubuntu): the deploy's Terraform steps need a
+  Linux shell.
 
 ## Install with azad
 
@@ -71,29 +72,33 @@ directories and Windows):
 curl -fsSL https://github.com/kodu-ai/azad-cli/releases/latest/download/install.sh | sh
 ```
 
-Deploys run from a checkout of the Azad app source until its release
-artifacts are published. Clone it (read access to the repository is needed)
-and install its dependencies:
-
-```sh
-git clone git@github.com:kodu-ai/azad-ide-web.git ~/azad-source
-cd ~/azad-source && bun install --frozen-lockfile
-```
-
 Then run:
 
 ```sh
-azad --source ~/azad-source
+azad
 ```
 
-The first deploy downloads the azad-terraform release this `azad` pins,
-checks its SHA-256 and keeps it in `~/.azad/cache/azad-terraform/<version>/`
-(`azad --doctor` prints the version and the directory). The commands further
-down call that directory `$TF`:
+The deploy downloads two things, checks them and keeps them:
+
+- The latest Azad release (or the one `--version x.y.z` names), from
+  `https://api.azad.pro/api/v3/releases/`. Its manifest must carry a valid
+  signature by the key this `azad` pins, and every file must match the
+  manifest. It is kept in `~/.azad/cache/releases/<version>/`, which the
+  commands below call `$R`.
+- The azad-terraform release this `azad` pins, checked against its SHA-256,
+  in `~/.azad/cache/azad-terraform/<version>/`, which the commands below call
+  `$TF`.
+
+`azad --doctor` prints the azad-terraform directory and, once an instance
+has deployed, the release it records:
 
 ```sh
 TF=~/.azad/cache/azad-terraform/<version>
+R=~/.azad/cache/releases/<Azad version>
 ```
+
+Mini Apps need no question here: they run inside the API fleet at
+`<app>.apps.<hostname>`.
 
 Your answers and private settings are kept in the instance directory
 `~/.azad/instances/default` (`%USERPROFILE%\.azad\instances\default` on
@@ -178,10 +183,11 @@ In order:
 `azad` then deploys:
 
 1. It creates the deployment token.
-2. azad-terraform's `scripts/gcp.ts setup` writes the Terraform variables
+2. It downloads and verifies the release (see above).
+3. azad-terraform's `scripts/gcp.ts setup` writes the Terraform variables
    into the instance directory. Your credentials stay in `azad`'s private
    `.env`; Terraform never stores them.
-3. It shows the Terraform plan and applies exactly that saved plan only after
+4. It shows the Terraform plan and applies exactly that saved plan only after
    you confirm (the default is No). A first install has two plans, because
    everything but the cluster is planned against the cluster's API: plan 1 of
    2 creates the cluster and Clerk's DNS records, and plan 2 of 2, shown once
@@ -227,8 +233,10 @@ during a deploy (see [Native push for the mobile apps](#native-push-for-the-mobi
 
 Every command names an instance directory that keeps this installation's
 settings, variables and a cache of its keys (Terraform's state and the keys
-themselves live in the project's GCS bucket and Secret Manager); the checkout
-only provides code. Put the credentials in the instance directory's `.env` (here
+themselves live in the project's GCS bucket and Secret Manager); the release
+directory `$R` only provides code. `azad` downloads and verifies `$R` on its
+first deploy run; a release directory you build yourself must have the same
+layout (see the [reference](reference.md#releases)). Put the credentials in the instance directory's `.env` (here
 `~/.azad/instances/default/.env`, private to you). `azad`'s `.env` has this shape:
 
 ```sh
@@ -251,15 +259,15 @@ bun --no-env-file "$TF/scripts/gcp.ts" setup \
   --credentials ~/.azad/instances/default/.env \
   --project-id my-project --region europe-west1 \
   --web-host azad.example.com --account-id <cloudflare-account-id> \
-  --source ~/azad-source --instance-dir ~/.azad/instances/default [--evaluation]
-bun --no-env-file "$TF/scripts/gcp.ts" init --instance-dir ~/.azad/instances/default
-bun --no-env-file "$TF/scripts/gcp.ts" plan --source ~/azad-source --instance-dir ~/.azad/instances/default -out=terraform.tfplan
-bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-dir ~/.azad/instances/default terraform.tfplan
+  --release "$R" --instance-dir ~/.azad/instances/default [--evaluation]
+bun --no-env-file "$TF/scripts/gcp.ts" init --release "$R" --instance-dir ~/.azad/instances/default
+bun --no-env-file "$TF/scripts/gcp.ts" plan --release "$R" --instance-dir ~/.azad/instances/default -out=terraform.tfplan
+bun --no-env-file "$TF/scripts/gcp.ts" apply --release "$R" --instance-dir ~/.azad/instances/default terraform.tfplan
 # A first install: plan and apply once more for everything else.
-bun --no-env-file "$TF/scripts/gcp.ts" plan --source ~/azad-source --instance-dir ~/.azad/instances/default -out=terraform.tfplan
-bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-dir ~/.azad/instances/default terraform.tfplan
+bun --no-env-file "$TF/scripts/gcp.ts" plan --release "$R" --instance-dir ~/.azad/instances/default -out=terraform.tfplan
+bun --no-env-file "$TF/scripts/gcp.ts" apply --release "$R" --instance-dir ~/.azad/instances/default terraform.tfplan
 # Terraform builds the infrastructure only; this installs the app on it.
-bun --no-env-file "$TF/scripts/gcp.ts" deploy --source ~/azad-source --instance-dir ~/.azad/instances/default
+bun --no-env-file "$TF/scripts/gcp.ts" deploy --release "$R" --instance-dir ~/.azad/instances/default
 ```
 
 - `setup` reads the zone and Clerk's DNS targets, then writes
@@ -293,20 +301,20 @@ bun --no-env-file "$TF/scripts/gcp.ts" deploy --source ~/azad-source --instance-
 - **Desktop and mobile apps:** turn on **Native API** in Clerk's dashboard, on
   the Native applications page. `azad` prints the exact link. Clerk has
   no API for this setting.
-- **Official Mini Apps:** every deploy lists PartyTask, Release Queue and
-  Remote iOS Simulator in your marketplace as Azad's apps (see
-  "Official Mini Apps" in `docs/self-hosting.md` of the Azad source). If one
-  fails, the deploy log names the command that retries only that step.
+- **Official Mini Apps:** with Mini Apps on, every deploy lists PartyTask,
+  Release Queue and Remote iOS Simulator in your marketplace as Azad's apps.
+  If one fails, the deploy log names the command that retries only that step.
 - **Keep an offline copy of the keys:** `azad --backup-keys ~/azad-keys`
   writes the instance's signing and encryption keys to a new folder. The
   deploy keeps them in your project's Secret Manager.
 
 Terraform's state and the app's receipts live in your project's GCS bucket
 `<name>-<project hash>-install`, and the keys in its Secret Manager. The
-instance directory holds the rest; the source checkout only provides code,
-and any checkout of the same revision deploys it:
+instance directory holds the rest; the release in `~/.azad/cache/releases/`
+only provides code:
 
-- `.env`: your answers, which the deploy reads directly.
+- `.env`: your answers, which the deploy reads directly, and the release it
+  deploys (`AZAD_CLI_RELEASE_VERSION`, `AZAD_CLI_RELEASE_SHA`).
 - The Cloudflare token you pasted, and the scoped deployment token with its
   own Terraform state in `cloudflare-bootstrap/`.
 - `terraform/gcp-celld/`: the `terraform.tfvars.json` that `setup` writes
@@ -316,13 +324,16 @@ and any checkout of the same revision deploys it:
 
 ## Change settings
 
-Rerun `azad --source ~/azad-source` with the same instance. Once a deployment
-has started it asks **Resume the deployment with saved settings** (the
-default) or **Change settings, then deploy**. Changing walks the questions
-again with your saved answers filled in; Enter keeps each one. The changes are
-saved in the instance directory's `.env`, and the deploy shows the plan and
-asks the same confirmation as before; the apply then redeploys the app with
-them. Answers only `azad` reads (`AZAD_CLI_*` lines) never redeploy.
+Rerun `azad` with the same instance. Once a deployment has started it asks
+**Resume the deployment with saved settings** (the default) or **Change
+settings, then deploy**. Changing walks the questions again with your saved
+answers filled in; Enter keeps each one. The changes are saved in the
+instance directory's `.env`, and the deploy shows the plan and asks the same
+confirmation as before; the apply then redeploys the app with them. Answers
+only `azad` reads (`AZAD_CLI_*` lines) never redeploy. The deploy uses the
+release the installation runs now: the newer of the one the instance
+recorded and the one the installation's receipt names, so a console update
+or `azad update` is never rolled back.
 
 Settings the first deploy fixed are shown, not asked: the target, the Google
 Cloud project and region, the hostname and Cloudflare account, sizing, the
@@ -339,16 +350,14 @@ it reports a fixed setting as `immutable` and any other change as
 ## Native push for the mobile apps
 
 Web push works without any setup. The iOS and Android apps are woken through
-Azad's push relay, which needs this instance claimed by an azad.pro account
-(see "Native push through the Azad relay" in `docs/self-hosting.md` of the
-Azad source).
+Azad's push relay, which needs this instance claimed by an azad.pro account.
 The relay accepts a claim only from a signed-in azad.pro account, so it
 cannot happen unattended. The deploy claims relay access itself when it has
 your session and no relay token yet:
 
 ```sh
 export AZAD_PUSH_RELAY_SESSION_TOKEN='<short-lived azad.pro session token>'
-bun --no-env-file "$TF/scripts/gcp.ts" deploy --source ~/azad-source --instance-dir ~/.azad/instances/default
+bun --no-env-file "$TF/scripts/gcp.ts" deploy --release "$R" --instance-dir ~/.azad/instances/default
 unset AZAD_PUSH_RELAY_SESSION_TOKEN
 ```
 
@@ -374,20 +383,29 @@ unset AZAD_PUSH_RELAY_SESSION_TOKEN
 ## Update
 
 ```sh
-cd ~/azad-source && git pull --ff-only && bun install --frozen-lockfile
-bun --no-env-file "$TF/scripts/gcp.ts" refresh --source ~/azad-source --instance-dir ~/.azad/instances/default   # records the new revision
-bun --no-env-file "$TF/scripts/gcp.ts" deploy --source ~/azad-source --instance-dir ~/.azad/instances/default
+azad update            # the release azad.pro runs now
+azad update --status   # what runs, and what is newer
 ```
 
-The deploy waits until the API serves the new revision, and refuses a checkout
-older than the one the installation runs. Plan and apply only when the
-infrastructure changes (a setting in `terraform.tfvars.json`, or a newer
-azad-terraform after `init --source ~/azad-source`), then deploy. For an
-installation made with azad 0.0.x, that first `init` moves the local
-Terraform state into the GCS bucket. To update `azad`
-itself, rerun its install command; a newer release may pin a newer
-azad-terraform, which its next deploy downloads (`azad --doctor` prints the
-new `$TF`).
+`azad update` installs a published release without Terraform (see
+[Updates](reference.md#updates)). When a release needs new infrastructure it
+stops before changing anything; then run
+
+```sh
+azad --version <x.y.z>
+```
+
+which downloads and verifies that release, records it in the Terraform
+variables (`refresh`), shows the plan, applies it after your yes and deploys
+the release. The deploy waits until the API serves the new revision. A
+release older than the one the installation runs is refused.
+
+Plan and apply on their own only when you change a setting in
+`terraform.tfvars.json`, or after `init` with a newer azad-terraform. For an
+installation whose Terraform state is still local, that first `init` moves
+it into the GCS bucket. To update `azad` itself, rerun its install command; a
+newer `azad` may pin a newer azad-terraform, which its next deploy downloads
+(`azad --doctor` prints the new `$TF`).
 
 ### Moving an install from the global to the regional load balancer
 
@@ -401,8 +419,8 @@ applying it:
    certificate, then updates the `A` records:
 
    ```sh
-   bun --no-env-file "$TF/scripts/gcp.ts" plan --source ~/azad-source --instance-dir ~/.azad/instances/default -target=module.dns -target=module.edge -out=lb1.tfplan
-   bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-dir ~/.azad/instances/default lb1.tfplan
+   bun --no-env-file "$TF/scripts/gcp.ts" plan --release "$R" --instance-dir ~/.azad/instances/default -target=module.dns -target=module.edge -out=lb1.tfplan
+   bun --no-env-file "$TF/scripts/gcp.ts" apply --release "$R" --instance-dir ~/.azad/instances/default lb1.tfplan
    ```
 
 2. Remove the old Gateway and its routes, then wait until GKE has deleted
@@ -411,15 +429,15 @@ applying it:
    map cannot be deleted while that proxy exists:
 
    ```sh
-   bun --no-env-file "$TF/scripts/gcp.ts" plan --source ~/azad-source --instance-dir ~/.azad/instances/default -target=module.gateway -out=lb2.tfplan
-   bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-dir ~/.azad/instances/default lb2.tfplan
+   bun --no-env-file "$TF/scripts/gcp.ts" plan --release "$R" --instance-dir ~/.azad/instances/default -target=module.gateway -out=lb2.tfplan
+   bun --no-env-file "$TF/scripts/gcp.ts" apply --release "$R" --instance-dir ~/.azad/instances/default lb2.tfplan
    ```
 
 3. Remove the global IP, certificate map and certificates:
 
    ```sh
-   bun --no-env-file "$TF/scripts/gcp.ts" plan --source ~/azad-source --instance-dir ~/.azad/instances/default -out=lb3.tfplan
-   bun --no-env-file "$TF/scripts/gcp.ts" apply --source ~/azad-source --instance-dir ~/.azad/instances/default lb3.tfplan
+   bun --no-env-file "$TF/scripts/gcp.ts" plan --release "$R" --instance-dir ~/.azad/instances/default -out=lb3.tfplan
+   bun --no-env-file "$TF/scripts/gcp.ts" apply --release "$R" --instance-dir ~/.azad/instances/default lb3.tfplan
    ```
 
 Clients that cached the old IP fail for up to the DNS TTL (about five
@@ -428,7 +446,7 @@ minutes) after step 2, and open WebSockets reconnect once.
 ## Remove everything
 
 ```sh
-bun --no-env-file "$TF/scripts/gcp.ts" destroy --source ~/azad-source --instance-dir ~/.azad/instances/default
+bun --no-env-file "$TF/scripts/gcp.ts" destroy --release "$R" --instance-dir ~/.azad/instances/default
 ```
 
 - **Evaluation installs** are removed completely: the cluster, database,
@@ -449,15 +467,16 @@ To set up a new installation from scratch with the same instance directory,
 first [remove everything](#remove-everything), then:
 
 ```sh
-azad --reset --source ~/azad-source
+azad --reset
 ```
 
 Reset reads the installation's Terraform state (in its bucket, through
 azad-terraform) and the scoped token's state. While either still records resources it deletes
 nothing, lists them and prints the commands that remove them: azad-terraform's
-`gcp.ts init` and `gcp.ts destroy`, with the deletion-protection step above for
-a production install, and, after it, because the destroy uses it, the scoped
-Cloudflare token:
+`gcp.ts init` and `gcp.ts destroy` with the release the installation runs
+(downloaded first if it is not cached), with the deletion-protection step
+above for a production install, and, after it, because the destroy uses it,
+the scoped Cloudflare token:
 
 ```sh
 read -rs CLOUDFLARE_API_TOKEN && export CLOUDFLARE_API_TOKEN   # paste a token that can edit API tokens

@@ -20,7 +20,7 @@ function machine(installed: Record<string, string>): Run {
 const names = (needs: Parameters<typeof requiredTools>[0]) =>
   requiredTools(needs).map((tool) => `${tool.name} ${tool.minimum.join(".")}`)
 
-test("the wizard needs Node.js and npx for the Clerk CLI, gcloud for Google Cloud, and the deployment tools with a checkout", () => {
+test("the wizard needs Node.js and npx for the Clerk CLI, gcloud for Google Cloud, and Bun, Terraform, curl and tar to deploy", () => {
   expect(names({ clerkCli: true })).toEqual([
     "Node.js 20.0.0",
     "npm (npx) 7.0.0",
@@ -30,13 +30,20 @@ test("the wizard needs Node.js and npx for the Clerk CLI, gcloud for Google Clou
     "npm (npx) 7.0.0",
     "Google Cloud CLI (gcloud) 500.0.0",
   ])
-  // Deploying needs the newer Node.js, listed once.
-  expect(names({ clerkCli: true, deploy: true })).toEqual([
-    "Git 2.0.0",
+  // A deploy needs neither Git nor Node.js: it installs a release.
+  expect(names({ deploy: true })).toEqual([
     "Bun 1.4.4",
-    "Node.js 26.12.1",
-    "npm (npx) 7.0.0",
     "Terraform 1.13.4",
+    "curl 7.0.0",
+    "tar 1.0.0",
+  ])
+  expect(names({ clerkCli: true, deploy: true })).toEqual([
+    "Node.js 20.0.0",
+    "npm (npx) 7.0.0",
+    "Bun 1.4.4",
+    "Terraform 1.13.4",
+    "curl 7.0.0",
+    "tar 1.0.0",
   ])
   expect(names({})).toEqual([])
 })
@@ -64,11 +71,11 @@ test("a missing or too-old tool is listed with its minimum version, what was fou
   const problems = checkTools(
     requiredTools({ deploy: true, googleCloud: true }),
     machine({
-      git: "git version 2.39.5 (Apple Git-154)",
       bun: "1.3.1",
-      node: "v26.12.1",
-      npx: "11.6.2",
       terraform: "Terraform v1.14.0\non darwin_arm64",
+      // GNU tar prints a two-part version; bsdtar a three-part one.
+      tar: "tar (GNU tar) 1.35",
+      curl: "curl 8.7.1 (x86_64-apple-darwin24.0) libcurl/8.7.1",
       gcloud: "Google Cloud SDK 499.0.0\nbq 2.1.9",
     })
   )
@@ -93,16 +100,14 @@ test("a missing or too-old tool is listed with its minimum version, what was fou
 })
 
 test("the deploy's own check lists every missing deployment tool, and gcloud for Google Cloud", () => {
-  expect(missingPrerequisites("/", machine({ bun: "1.3.1" }))).toHaveLength(5)
+  expect(missingPrerequisites(machine({ bun: "1.3.1" }))).toHaveLength(4)
   expect(
     missingPrerequisites(
-      "/",
       machine({
-        git: "2.50.0",
         bun: "1.4.4",
-        node: "v26.12.1",
-        npx: "11.0.0",
         terraform: "Terraform v1.13.4",
+        curl: "curl 7.88.1",
+        tar: "bsdtar 3.5.3 - libarchive 3.5.3 zlib/1.2.12",
       }),
       "gcp"
     )

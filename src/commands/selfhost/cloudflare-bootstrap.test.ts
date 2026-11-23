@@ -24,12 +24,13 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true })
 })
 const revision = "a".repeat(40)
-/** The app source and azad-terraform directories under `root`; the fake helper never reads them. */
+/** The release and azad-terraform directories under `root`; the fake helper never reads them. */
 const sources = (root: string) => ({
-  source: join(root, "azad"),
+  release: join(root, "release"),
   terraform: join(root, "azad-terraform"),
 })
-function fixture(miniApps = false, managedSource = false) {
+/** An instance whose Mini Apps run on `miniAppsDomain` ("none": not now). */
+function fixture(miniAppsDomain = "none", managedSource = false) {
   const root = mkdtempSync(join(tmpdir(), "azad-bootstrap-handoff-"))
   roots.push(root)
   const config = new LocalConfig(join(root, "instance"))
@@ -40,7 +41,7 @@ function fixture(miniApps = false, managedSource = false) {
   config.save({
     CLOUDFLARE_ACCOUNT_ID: "b".repeat(32),
     AZAD_CLI_WEB_HOST: "board.example.com",
-    AZAD_SELF_HOST_MINIAPPS: miniApps ? "enabled" : "disabled",
+    AZAD_CLI_MINIAPPS_DOMAIN: miniAppsDomain,
     AZAD_CLI_CLOUDFLARE_BOOTSTRAP_FILE: bootstrapFile,
     CLERK_SECRET_KEY: "fixture-clerk-secret",
     DATABASE_URL: "postgresql://u:p@db.example.com/db?sslmode=require",
@@ -69,17 +70,6 @@ function fixture(miniApps = false, managedSource = false) {
         index_key: "deployment",
         attributes: { id: "c".repeat(32), value: "fixture-derived-deployment" },
       },
-      ...(miniApps
-        ? [
-            {
-              index_key: "miniapps",
-              attributes: {
-                id: "d".repeat(32),
-                value: "fixture-derived-runtime",
-              },
-            },
-          ]
-        : []),
       ...(managedSource
         ? [
             {
@@ -98,7 +88,6 @@ function fixture(miniApps = false, managedSource = false) {
       credentialsFile,
       serializeEnv({
         CLOUDFLARE_API_TOKEN: "fixture-derived-deployment",
-        ...(miniApps ? { V3_CF_API_TOKEN: "fixture-derived-runtime" } : {}),
         ...(managedSource
           ? {
               CLOUDFLARE_ARTIFACTS_API_TOKEN: "fixture-artifacts",
@@ -115,7 +104,6 @@ function fixture(miniApps = false, managedSource = false) {
       zoneIds: ["e".repeat(32)],
       tokenIds: {
         deployment: "c".repeat(32),
-        ...(miniApps ? { miniapps: "d".repeat(32) } : {}),
         ...(managedSource
           ? {
               "managed-source": "1".repeat(32),
@@ -135,6 +123,10 @@ function fixture(miniApps = false, managedSource = false) {
         phase: "complete",
         config: input,
         zoneIds: result.zoneIds,
+        // As azad-terraform 0.4.0 records the Mini Apps domain's zone.
+        ...(input.miniAppsDomain
+          ? { miniAppsZone: { id: "e".repeat(32), certificates: true } }
+          : {}),
       }),
       { mode: 0o600 }
     )
@@ -167,13 +159,13 @@ test("bootstrap permission preview does not create tokens, completion or workloa
 })
 
 test("successful bootstrap merges only derived credentials and resumes after root revocation", async () => {
-  const f = fixture(true)
+  const f = fixture("apps.example-apps.com")
   expect(
     await runCloudflareBootstrap(f.config, sources(f.root), revision, "apply", f.execute)
   ).toBe("complete")
   const values = f.config.read()
   expect(values.CLOUDFLARE_API_TOKEN).toBe("fixture-derived-deployment")
-  expect(values.V3_CF_API_TOKEN).toBe("fixture-derived-runtime")
+  expect(values.V3_CF_API_TOKEN).toBeUndefined()
   expect(values.CLERK_SECRET_KEY).toBe("fixture-clerk-secret")
   expect(readFileSync(f.config.envPath, "utf8")).not.toContain(
     "fixture-root-token"
@@ -297,7 +289,7 @@ test("automatic certificate registration requests its precise permission and pre
 })
 
 test("managed project source takes its Artifacts and Queues tokens from the same bootstrap", async () => {
-  const f = fixture(false, true)
+  const f = fixture("none", true)
   const inputs: string[] = []
   const execute: Run = (command, args, cwd, capture) => {
     inputs.push(readFileSync(args[args.indexOf("--config") + 1], "utf8"))
@@ -320,4 +312,37 @@ test("without managed source the helper config omits it, so older helpers accept
   }
   await runCloudflareBootstrap(f.config, sources("/work"), revision, "plan", execute)
   expect(JSON.parse(inputs[0])).not.toHaveProperty("managedSource")
+})
+
+test("the token request runs with the release, covers the Mini Apps domain's zone and never asks for a Mini Apps token", async () => {
+  for (const domain of ["apps.example-apps.com", "none"]) {
+    const f = fixture(domain)
+    const calls: { args: string[]; input: Record<string, unknown> }[] = []
+    const execute: Run = (command, args, cwd, capture) => {
+      const input = JSON.parse(
+        readFileSync(args[args.indexOf("--config") + 1], "utf8")
+      )
+      calls.push({ args, input })
+      return f.execute(command, args, cwd, capture)
+    }
+    await runCloudflareBootstrap(f.config, sources(f.root), revision, "plan", execute)
+    const { args, input } = calls[0]
+    expect(args.slice(-2)).toEqual(["--release", join(f.root, "release")])
+    expect(args).not.toContain("--source")
+    expect(input.miniApps).toBe(false)
+    if (domain === "none") expect(input).not.toHaveProperty("miniAppsDomain")
+    else expect(input.miniAppsDomain).toBe(domain)
+  }
+})
+
+test("a completed bootstrap no longer verifies once the Mini Apps domain changes", async () => {
+  const f = fixture("apps.example-apps.com")
+  await runCloudflareBootstrap(f.config, sources(f.root), revision, "apply", f.execute)
+  expect(verifyCompletedBootstrap(f.config.directory, f.config.read())).toBe(true)
+  expect(() =>
+    verifyCompletedBootstrap(f.config.directory, {
+      ...f.config.read(),
+      AZAD_CLI_MINIAPPS_DOMAIN: "other-apps.com",
+    })
+  ).toThrow("cannot be verified")
 })
