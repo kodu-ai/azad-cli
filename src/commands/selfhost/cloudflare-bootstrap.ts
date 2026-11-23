@@ -72,6 +72,11 @@ const receiptSchema = z.strictObject({
   phase: z.literal("complete"),
   config: configSchema,
   zoneIds: z.array(id).min(1),
+  /**
+   * The zone that holds the Mini Apps domain, and whether the deployment
+   * token may order its wildcard certificate (a subdomain of the zone).
+   */
+  miniAppsZone: z.strictObject({ id, certificates: z.boolean() }).optional(),
 })
 const credentialsSchema = z.strictObject({
   CLOUDFLARE_API_TOKEN: z.string().min(1),

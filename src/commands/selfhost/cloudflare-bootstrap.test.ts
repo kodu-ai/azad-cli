@@ -123,6 +123,10 @@ function fixture(miniAppsDomain = "none", managedSource = false) {
         phase: "complete",
         config: input,
         zoneIds: result.zoneIds,
+        // As azad-terraform 0.4.0 records the Mini Apps domain's zone.
+        ...(input.miniAppsDomain
+          ? { miniAppsZone: { id: "e".repeat(32), certificates: true } }
+          : {}),
       }),
       { mode: 0o600 }
     )
