@@ -55,7 +55,7 @@ const HELP = [
   "  azad update --status [--instance NAME | --directory PATH] [--json]",
   "  azad update --host gke-job|cloudflare-container --store JSON --version x.y.z --executor ID [--work DIR] [--accept-maintenance] [--confirm-stopped EXECUTOR]",
   "",
-  "Downloads the release's signed manifest from api.azad.pro, checks its signature against the key this azad pins, downloads the release's updater and checks it against the manifest, then runs it on this machine. The updater installs the release, and any release it must install first, along the upgrade path the release declares. It never changes infrastructure: when a release needs a new resource, it stops before changing anything and asks you to run azad --source CHECKOUT first.",
+  "Downloads the release's signed manifest from api.azad.pro, checks its signature against the key this azad pins, downloads the release's updater and checks it against the manifest, then runs it on this machine. The updater installs the release, and any release it must install first, along the upgrade path the release declares. It never changes infrastructure: when a release needs a new resource, it stops before changing anything; then run azad --version x.y.z, which applies the release's infrastructure and deploys it.",
   "Without --version it installs the release azad.pro runs now (latest).",
   "The instance must have been deployed with this machine's azad (its state bucket, settings and key cache are read from the instance directory). Bun 1.4.4 or newer runs the updater; on Google Cloud, gcloud's Application Default Credentials reach the installation.",
   "--accept-maintenance accepts the downtime of a release whose migrations cannot run while the API serves; without it such an update stops before changing anything.",
@@ -252,7 +252,7 @@ export function statusLines(report: {
       operation.status === "running"
         ? `Running: ${what} (operation ${operation.id}) on ${operation.holder?.host} ${operation.holder?.executor}, last seen ${operation.holder?.heartbeatAt}.`
         : operation.status === "stopped"
-          ? `Stopped: ${what} (operation ${operation.id})${operation.error ? `: ${operation.error}` : "."} Run azad update${operation.target ? ` --version ${operation.target.version}` : " --source CHECKOUT"} to resume it.`
+          ? `Stopped: ${what} (operation ${operation.id})${operation.error ? `: ${operation.error}` : "."} Run ${operation.target ? `azad update --version ${operation.target.version}` : "azad"} to resume it.`
           : `Last operation: ${what} (operation ${operation.id}), ${operation.outcome} at ${operation.updatedAt}.`
     )
   }

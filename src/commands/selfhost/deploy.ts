@@ -29,7 +29,14 @@ import {
   type ClerkDnsChecks,
 } from "./clerk"
 import { githubInstallUrl } from "./github-app"
-import { shellWord } from "./instance"
+import {
+  cloudflareRoot,
+  instanceTerraformDirectory,
+  shellWord,
+} from "./instance"
+import { recordRelease, type ReleaseResolver } from "./release"
+import { describeRelease, type InstallRelease } from "../../release/directory"
+import { deploymentStarted } from "../update/installation"
 import {
   describeTerraform,
   driverPath,
@@ -50,79 +57,42 @@ const varsSchema = z.looseObject({
   }),
 })
 
+/** Refused before anything runs: variables another installation's setup wrote. */
+const OTHER_INSTALLATION =
+  "This instance's Terraform variables belong to a different installation. Resume with its original configuration; do not replace its state."
+
 function assertInstanceVars(
   vars: z.infer<typeof varsSchema>,
-  values: Record<string, string>,
-  revision: string
+  values: Record<string, string>
 ): void {
   if (
     vars.cloudflare.web_origin !== `https://${values.AZAD_CLI_WEB_HOST}` ||
     vars.cloudflare.account_id !== values.CLOUDFLARE_ACCOUNT_ID ||
-    vars.deployment.revision !== revision ||
     (vars.gcp &&
       (vars.gcp.project_id !== values.AZAD_CLI_GCP_PROJECT ||
         vars.gcp.region !== values.AZAD_CLI_GCP_REGION)) ||
     Boolean(vars.gcp) !== (values.AZAD_CLI_DATABASE_PROVIDER === "cloudsql")
-  ) {
-    throw new CliError(
-      "This instance's Terraform variables belong to a different installation or source revision. Resume with its original configuration and source; do not replace its state."
-    )
-  }
-}
-
-/**
- * The azad-terraform root `cloudflare.ts --root` deploys for these settings:
- * `cloudsql` for a Cloud SQL database, `postgres` for Neon or other
- * PostgreSQL. (`gcp.ts` has a single root, `gcp-celld`.)
- */
-export function cloudflareRoot(
-  values: Record<string, string>
-): "cloudsql" | "postgres" {
-  return values.AZAD_CLI_DATABASE_PROVIDER === "cloudsql"
-    ? "cloudsql"
-    : "postgres"
-}
-
-/**
- * Where the instance in `directory` keeps its Terraform root's files, as the
- * azad-terraform drivers lay them out:
- * `<directory>/terraform/<gcp-celld|cloudsql|postgres>` holds the variables
- * setup writes, the state bucket's configuration, saved plans, Terraform's
- * working data and the deploy's cache (`installer-state` on Cloudflare,
- * `celld-install` on Google Cloud). Terraform's state, the receipts and the
- * keys live in the installation's own cloud. The deploy reads the private
- * settings from `<directory>/.env` itself.
- */
-export function instanceTerraformDirectory(
-  directory: string,
-  values: Record<string, string>
-): string {
-  return join(
-    resolve(directory),
-    "terraform",
-    values.AZAD_CLI_TARGET === "gcp"
-      ? "gcp-celld"
-      : values.AZAD_CLI_DATABASE_PROVIDER === "cloudsql"
-        ? "cloudsql"
-        : "postgres"
   )
+    throw new CliError(OTHER_INSTALLATION)
 }
 
 /**
- * What a deploy runs: the Azad app source checkout (`--source`), which the
- * drivers deploy and the instance binds to by commit, and the azad-terraform
- * drivers that do it.
+ * What a deploy runs: the Azad release it installs, prepared once the
+ * deploy's tools are checked (see {@link ReleaseResolver}), and the
+ * azad-terraform drivers that install it.
  */
 export type DeploySources = {
-  source: string
+  release: ReleaseResolver
   terraform: TerraformSelection
 }
 
 /**
- * Deploys the instance in `config` by running the azad-terraform drivers;
- * no resource or state orchestration is duplicated here. The drivers run
- * from the azad-terraform directory with `--source` and `--instance-dir`, so
- * nothing depends on the working directory.
+ * Deploys the instance in `config` by running the azad-terraform drivers
+ * with the release directory (`--release`); no resource or state
+ * orchestration is duplicated here. The drivers run from the azad-terraform
+ * directory with `--release` and `--instance-dir`, so nothing depends on the
+ * working directory. When the installation moves to another release, the
+ * drivers' `refresh` records it in the Terraform variables before planning.
  */
 export async function deployInstance(
   config: LocalConfig,
@@ -145,15 +115,10 @@ export async function deployInstance(
   | "bootstrap_complete"
   | "bootstrap_not_required"
 > {
-  const cwd = resolve(sources.source)
-  if (!existsSync(cwd))
-    throw new CliError(
-      `The Azad source (--source) must be a Git checkout with a readable commit; ${cwd} does not exist.`
-    )
-  const gcp = config.read().AZAD_CLI_TARGET === "gcp"
-  const google = needsGoogleCloud(config.read())
+  const values = config.read()
+  const gcp = values.AZAD_CLI_TARGET === "gcp"
+  const google = needsGoogleCloud(values)
   const missing = missingPrerequisites(
-    cwd,
     execute,
     google ? "gcp" : "cloudflare"
   )
@@ -166,7 +131,7 @@ export async function deployInstance(
     execute(
       "gcloud",
       ["auth", "application-default", "print-access-token"],
-      cwd,
+      config.directory,
       true
     ).status !== 0
   ) {
@@ -175,83 +140,15 @@ export async function deployInstance(
     )
     return "missing_prerequisites"
   }
-  // The drivers validate the rest of the source themselves.
-  const head = execute("git", ["rev-parse", "HEAD"], cwd, true)
-  const revision = head.stdout.trim()
-  if (head.status !== 0 || !/^[a-f0-9]{40}$/u.test(revision))
-    throw new CliError(
-      "The Azad source (--source) must be a Git checkout with a readable commit."
-    )
-  const values = config.read()
-  if (
-    values.AZAD_CLI_SOURCE_REVISION &&
-    values.AZAD_CLI_SOURCE_REVISION !== revision
-  ) {
-    throw new CliError(
-      "This instance is bound to another source revision. Update it with the azad-terraform drivers' refresh, plan and apply; the wizard will not switch source or reset state."
-    )
-  }
-  if (
-    values.AZAD_SELF_HOST_DATABASE_CA_CERT_ID &&
-    execute(
-      "git",
-      [
-        "merge-base",
-        "--is-ancestor",
-        "7caf9ad43884d9051db3a23417e83ba83a584b62",
-        revision,
-      ],
-      cwd,
-      true
-    ).status !== 0
-  )
-    throw new CliError(
-      "The selected checkout cannot be verified to support certificate-verified database TLS. Use a reviewed Azad source checkout with its Git history; no setup was started."
-    )
-  if (
-    values.AZAD_SELF_HOST_DATABASE_CA &&
-    execute(
-      "git",
-      [
-        "merge-base",
-        "--is-ancestor",
-        "267aaa82682e00849068f09c595399f9d61ae539",
-        revision,
-      ],
-      cwd,
-      true
-    ).status !== 0
-  )
-    throw new CliError(
-      "The selected checkout cannot be verified to support automatic Neon certificate registration. Use a reviewed Azad source checkout with its Git history; no cloud setup was started."
-    )
   const files = instanceTerraformDirectory(config.directory, values)
   const varsPath = join(files, "terraform.tfvars.json")
-  if (gcp && existsSync(varsPath))
-    assertGoogleCloudVars(varsPath, values, revision)
+  if (gcp && existsSync(varsPath)) assertGoogleCloudVars(varsPath, values)
   else if (existsSync(varsPath))
     assertInstanceVars(
       varsSchema.parse(JSON.parse(readFileSync(varsPath, "utf8"))),
-      values,
-      revision
+      values
     )
-  if (
-    values.AZAD_CLI_CLOUDFLARE_AUTH === "bootstrap" &&
-    execute(
-      "git",
-      [
-        "merge-base",
-        "--is-ancestor",
-        "3215f43f4b70daae8b18785c07d8feea70fdb58c",
-        revision,
-      ],
-      cwd,
-      true
-    ).status !== 0
-  )
-    throw new CliError(
-      "The selected checkout cannot be verified to support Cloudflare token bootstrap. Use a reviewed Azad source checkout with its Git history; no tokens were created."
-    )
+  const release = await sources.release(values)
   const terraform = await prepareTerraform(sources.terraform, {
     execute,
     fetcher: options.fetcher,
@@ -262,7 +159,7 @@ export async function deployInstance(
       "bun",
       driverArguments(terraform, "cloudflare", args, {
         root: cloudflareRoot(values),
-        source: cwd,
+        release: release.directory,
         instance: config.directory,
       }),
       terraform
@@ -271,17 +168,8 @@ export async function deployInstance(
   }
   const takeOver = options.takeOver ? ["--take-over", options.takeOver] : []
   questions.note(
-    `Deploying from ${cwd} @ ${revision.slice(0, 12)} with ${describeTerraform(sources.terraform)}.`
+    `Deploying ${describeRelease(release)} from ${release.directory} with ${describeTerraform(sources.terraform)}.`
   )
-  if (!existsSync(resolve(cwd, "node_modules"))) {
-    if (
-      execute("bun", ["--no-env-file", "install", "--frozen-lockfile"], cwd)
-        .status !== 0
-    )
-      throw new CliError(
-        "Installing the Azad source's dependencies failed. Resume after fixing the reported error."
-      )
-  }
   let tokensConfirmed = false
   if (
     values.AZAD_CLI_CLOUDFLARE_AUTH === "bootstrap" &&
@@ -289,8 +177,8 @@ export async function deployInstance(
   ) {
     await runCloudflareBootstrap(
       config,
-      { source: cwd, terraform },
-      revision,
+      { release: release.directory, terraform },
+      release.sourceSha,
       "plan",
       execute
     )
@@ -310,14 +198,13 @@ export async function deployInstance(
     questions.note("Creating scoped Cloudflare tokens…")
     await runCloudflareBootstrap(
       config,
-      { source: cwd, terraform },
-      revision,
+      { release: release.directory, terraform },
+      release.sourceSha,
       "apply",
       execute
     )
     Object.assign(values, config.read())
-    values.AZAD_CLI_SOURCE_REVISION = revision
-    values.AZAD_CLI_SOURCE = cwd
+    recordRelease(values, release)
     config.save(values)
   }
   await setUpMeetings(config, questions, tokensConfirmed, options.fetcher)
@@ -329,7 +216,7 @@ export async function deployInstance(
   if (gcp)
     return await deployGoogleCloud(
       config,
-      { cwd, terraform, files, revision },
+      { release, terraform, files },
       questions,
       execute,
       options
@@ -371,14 +258,16 @@ export async function deployInstance(
     }
   }
   const vars = varsSchema.parse(JSON.parse(readFileSync(varsPath, "utf8")))
-  assertInstanceVars(vars, values, revision)
-  values.AZAD_CLI_SOURCE_REVISION = revision
-  values.AZAD_CLI_SOURCE = cwd
+  assertInstanceVars(vars, values)
+  recordRelease(values, release)
   config.save(values)
   if (!webhookSecret && values.GITHUB_WEBHOOK_SECRET)
     questions.note(
       `Set your GitHub App's webhook secret to GITHUB_WEBHOOK_SECRET from ${config.envPath}.`
     )
+  // Setup wrote this release's commit; an update to another release is
+  // recorded in the variables before Terraform plans it.
+  if (vars.deployment.revision !== release.sourceSha) invoke(["refresh"])
   invoke(["init", ...takeOver])
   invoke(["plan", "-out=terraform.tfplan"])
   if (
@@ -480,23 +369,21 @@ const googleCloudVarsSchema = z.looseObject({
   deployment: z.looseObject({ revision: z.string(), env_file: z.string() }),
 })
 
+function readGoogleCloudVars(path: string) {
+  return googleCloudVarsSchema.parse(JSON.parse(readFileSync(path, "utf8")))
+}
+
 function assertGoogleCloudVars(
   path: string,
-  values: Record<string, string>,
-  revision: string
+  values: Record<string, string>
 ): void {
-  const vars = googleCloudVarsSchema.parse(
-    JSON.parse(readFileSync(path, "utf8"))
-  )
+  const vars = readGoogleCloudVars(path)
   if (
     vars.web_host !== values.AZAD_CLI_WEB_HOST ||
     vars.project_id !== values.AZAD_CLI_GCP_PROJECT ||
-    vars.region !== values.AZAD_CLI_GCP_REGION ||
-    vars.deployment.revision !== revision
+    vars.region !== values.AZAD_CLI_GCP_REGION
   )
-    throw new CliError(
-      "This instance's Terraform variables belong to a different installation or source revision. Resume with its original configuration and source; do not replace its state."
-    )
+    throw new CliError(OTHER_INSTALLATION)
 }
 
 /**
@@ -573,27 +460,25 @@ async function clerkReady(
 /**
  * Writes an offline copy of the installation's keys to the new directory
  * `out`, through the azad-terraform drivers' `backup-keys`: from this
- * machine's cache of them or, on Google Cloud, from Secret Manager.
+ * machine's cache of them or, on Google Cloud, from Secret Manager. It runs
+ * with the release the installation runs.
  *
  * @returns The directory written.
- * @throws CliError when the instance was never deployed, has no app source
- *   checkout, or the drivers could not write the copy.
+ * @throws CliError when the instance was never deployed, its release cannot
+ *   be prepared, or the drivers could not write the copy.
  */
 export async function backupKeys(
   directory: string,
   values: Record<string, string>,
-  sources: { source?: string; terraform: TerraformSelection },
+  sources: DeploySources,
   out: string,
   execute: Run = run
 ): Promise<string> {
-  if (!values.AZAD_CLI_SOURCE_REVISION)
+  if (!deploymentStarted(values))
     throw new CliError(
       "This instance has not been deployed yet, so it has no keys to back up."
     )
-  if (!sources.source || !existsSync(sources.source))
-    throw new CliError(
-      "Pass --source with the Azad checkout that deployed this instance."
-    )
+  const release = await sources.release(values)
   const terraform = await prepareTerraform(sources.terraform, { execute })
   const gcp = values.AZAD_CLI_TARGET === "gcp"
   const result = execute(
@@ -604,7 +489,7 @@ export async function backupKeys(
       ["backup-keys", "--out", out],
       {
         root: gcp ? undefined : cloudflareRoot(values),
-        source: resolve(sources.source),
+        release: release.directory,
         instance: resolve(directory),
       }
     ),
@@ -633,19 +518,17 @@ function keysNote(directory: string): string {
 /**
  * The arguments that run `driver` from the azad-terraform directory
  * `terraform`: the command and its arguments, then `--root` (Cloudflare's
- * root name), `--source` for the commands that deploy from the app source or
- * hold the installation's operation record (setup, refresh, init, plan,
- * apply, deploy, destroy and backup-keys; read-only commands take none), and
+ * root name), `--release` for the commands that deploy the release or hold
+ * the installation's operation record (setup, refresh, init, plan, apply,
+ * deploy, destroy and backup-keys; read-only commands take none), and
  * `--instance-dir` last.
  */
 export function driverArguments(
   terraform: string,
   driver: "cloudflare" | "gcp",
   args: string[],
-  options: { root?: string; source?: string; instance: string }
+  options: { root?: string; release?: string; instance: string }
 ): string[] {
-  // init takes the source to move a release-0.0.x local state under the
-  // installation's operation record.
   const deploying = [
     "setup",
     "refresh",
@@ -661,7 +544,7 @@ export function driverArguments(
     driverPath(terraform, driver),
     ...args,
     ...(options.root ? ["--root", options.root] : []),
-    ...(deploying && options.source ? ["--source", options.source] : []),
+    ...(deploying && options.release ? ["--release", options.release] : []),
     "--instance-dir",
     options.instance,
   ]
@@ -679,18 +562,18 @@ export function driverArguments(
  */
 async function deployGoogleCloud(
   config: LocalConfig,
-  checkout: { cwd: string; terraform: string; files: string; revision: string },
+  deployment: { release: InstallRelease; terraform: string; files: string },
   questions: Questions,
   execute: Run,
   options: { waitForClerk?: boolean; fetcher?: Fetcher; takeOver?: string }
 ): Promise<"planned" | "applied"> {
   const values = config.read()
-  const { cwd, terraform, files, revision } = checkout
+  const { release, terraform, files } = deployment
   const helper = (args: string[], capture = false) => {
     const result = execute(
       "bun",
       driverArguments(terraform, "gcp", args, {
-        source: cwd,
+        release: release.directory,
         instance: config.directory,
       }),
       terraform,
@@ -721,9 +604,15 @@ async function deployGoogleCloud(
       args.push("--agent-machine", values.AZAD_CLI_GCP_AGENT_MACHINE)
     helper(args)
   }
-  values.AZAD_CLI_SOURCE_REVISION = revision
-  values.AZAD_CLI_SOURCE = cwd
+  recordRelease(values, release)
   config.save(values)
+  // Setup wrote this release's commit; an update to another release is
+  // recorded in the variables before Terraform plans it.
+  if (
+    readGoogleCloudVars(join(files, "terraform.tfvars.json")).deployment
+      .revision !== release.sourceSha
+  )
+    helper(["refresh"])
   helper(["init", "-input=false", ...takeOver])
   const plans = helper(["phase"], true).trim() === "cluster" ? 2 : 1
   const target = `Google Cloud project ${values.AZAD_CLI_GCP_PROJECT} (${values.AZAD_CLI_GCP_REGION})`

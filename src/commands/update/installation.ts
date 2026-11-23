@@ -7,6 +7,19 @@ import { instanceTerraformDirectory } from "../selfhost/instance"
 import type { RunUpdater } from "./run"
 
 /**
+ * The saved settings that record the release an instance's deploy uses:
+ * its version and the commit it was built from. A deployment has started
+ * once they are saved.
+ */
+export const RELEASE_VERSION_KEY = "AZAD_CLI_RELEASE_VERSION"
+export const RELEASE_SHA_KEY = "AZAD_CLI_RELEASE_SHA"
+
+/** True once a deploy of the instance with these settings has started. */
+export function deploymentStarted(values: Record<string, string>): boolean {
+  return Boolean(values[RELEASE_SHA_KEY])
+}
+
+/**
  * Where an installation keeps its state in its own cloud, as azad-terraform
  * creates it (the app's `installStoreSelectionSchema`): a GCS bucket on Google
  * Cloud, an R2 bucket on Cloudflare.
@@ -68,21 +81,22 @@ export type LocalInstallation = {
  * (`terraform.tfvars.json`). The updater shares that cache with deploys, so
  * the keys it holds are used and refreshed in place.
  *
- * @throws CliError When the instance was never deployed.
+ * @throws CliError When the instance was never deployed, or its deploy has
+ *   not created the state bucket yet.
  */
 export function localInstallation(directory: string): LocalInstallation {
   const envPath = join(directory, ".env")
   const values = existsSync(envPath) ? readPrivateEnv(envPath) : undefined
-  if (!values?.AZAD_CLI_SOURCE_REVISION)
+  if (!values || !deploymentStarted(values))
     throw new CliError(
-      `${directory} has no deployed installation. Deploy it first: azad --source CHECKOUT.`
+      `${directory} has no deployed installation. Deploy it first: azad.`
     )
   const terraform = instanceTerraformDirectory(directory, values)
   const backend = join(terraform, "backend.json")
   const vars = join(terraform, "terraform.tfvars.json")
   if (!existsSync(backend) || !existsSync(vars))
     throw new CliError(
-      `${terraform} has no state bucket configured. Run azad --source CHECKOUT once to move the installation's state into its cloud, then update.`
+      `${terraform} has no state bucket configured yet: the deploy stopped before creating it. Resume the deploy with azad, then update.`
     )
   let store: StoreSelection
   let deployment: z.infer<typeof varsSchema>["deployment"]
@@ -94,7 +108,7 @@ export function localInstallation(directory: string): LocalInstallation {
       .deployment
   } catch {
     throw new CliError(
-      `${backend} or ${vars} is not what azad-terraform writes. Restore them, or rerun azad --source CHECKOUT.`
+      `${backend} or ${vars} is not what azad-terraform writes. Restore them, or resume the deploy with azad.`
     )
   }
   const handoff = join(deployment.state_directory, "handoff.json")

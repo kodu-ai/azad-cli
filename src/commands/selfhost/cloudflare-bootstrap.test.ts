@@ -24,9 +24,9 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true })
 })
 const revision = "a".repeat(40)
-/** The app source and azad-terraform directories under `root`; the fake helper never reads them. */
+/** The release and azad-terraform directories under `root`; the fake helper never reads them. */
 const sources = (root: string) => ({
-  source: join(root, "azad"),
+  release: join(root, "release"),
   terraform: join(root, "azad-terraform"),
 })
 function fixture(miniApps = false, managedSource = false) {
@@ -320,4 +320,16 @@ test("without managed source the helper config omits it, so older helpers accept
   }
   await runCloudflareBootstrap(f.config, sources("/work"), revision, "plan", execute)
   expect(JSON.parse(inputs[0])).not.toHaveProperty("managedSource")
+})
+
+test("the token driver runs with the release directory, never a checkout", async () => {
+  const f = fixture()
+  const calls: string[][] = []
+  const execute: Run = (command, args, cwd, capture) => {
+    calls.push(args)
+    return f.execute(command, args, cwd, capture)
+  }
+  await runCloudflareBootstrap(f.config, sources(f.root), revision, "plan", execute)
+  expect(calls[0].slice(-2)).toEqual(["--release", join(f.root, "release")])
+  expect(calls[0]).not.toContain("--source")
 })

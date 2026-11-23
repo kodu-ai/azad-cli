@@ -11,7 +11,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { LocalConfig } from "./config"
 import type { Run } from "../../process"
-import { instanceTerraformDirectory } from "./deploy"
+import { instanceTerraformDirectory } from "./instance"
+import type { ReleaseResolver } from "./release"
+import { CliError } from "../../error"
 import { resetInstance } from "./reset"
 import type { TerraformSelection } from "./terraform"
 
@@ -61,8 +63,15 @@ function instance(
   const root = mkdtempSync(join(tmpdir(), "azad-cli-reset-"))
   roots.push(root)
   const config = new LocalConfig(join(root, "instance"))
-  const source = join(root, "source")
+  // The release directory the installation runs, as the resolver prepares it.
+  const source = join(root, "release")
   mkdirSync(source)
+  const release: ReleaseResolver = async () => ({
+    directory: source,
+    version: "5.30.0",
+    sourceSha: revision,
+    signed: true,
+  })
   const googleCloud = options.target === "gcp"
   const drivers = join(root, "azad-terraform")
   mkdirSync(join(drivers, "scripts"), { recursive: true })
@@ -76,7 +85,7 @@ function instance(
     CLERK_SECRET_KEY: "fixture-clerk-secret",
     AZAD_CLI_CLERK_APP_ID: "app_fixture",
     ...(options.deployed
-      ? { AZAD_CLI_SOURCE_REVISION: revision, AZAD_CLI_SOURCE: source }
+      ? { AZAD_CLI_RELEASE_VERSION: "5.30.0", AZAD_CLI_RELEASE_SHA: revision }
       : {}),
   })
   const credential = join(config.directory, ".cloudflare-bootstrap-credential")
@@ -102,14 +111,14 @@ function instance(
       )
     )
   }
-  return { root, directory: config.directory, source, terraform, files }
+  return { root, directory: config.directory, source, release, terraform, files }
 }
 
 test("reset refuses while the installation's Terraform state records resources, and names the target's destroy command", async () => {
   const f = instance({ deployed: true })
   writeFileSync(join(f.files, "terraform.tfstate"), state(2, 1))
   const report = await resetInstance(
-    { directory: f.directory, terraform: f.terraform, confirm: refuse },
+    { directory: f.directory, release: f.release, terraform: f.terraform, confirm: refuse },
     noTerraform
   )
   expect(report.status).toBe("live_resources")
@@ -119,7 +128,7 @@ test("reset refuses while the installation's Terraform state records resources, 
   ])
   const helper = `bun --no-env-file ${join(f.terraform.directory, "scripts", "cloudflare.ts")}`
   expect(report.commands).toEqual([
-    `${helper} init --root postgres --source ${f.source} --instance-dir ${f.directory} && ${helper} destroy --root postgres --source ${f.source} --instance-dir ${f.directory}`,
+    `${helper} init --root postgres --release ${f.source} --instance-dir ${f.directory} && ${helper} destroy --root postgres --release ${f.source} --instance-dir ${f.directory}`,
   ])
   expect(report.message).toContain("azad --reset again")
   expect(report.message).not.toContain("fixture-")
@@ -136,17 +145,17 @@ test("on Google Cloud the refusal adds the deletion-protection step, unless the 
   const f = instance({ deployed: true, target: "gcp" })
   writeFileSync(join(f.files, "terraform.tfstate"), state(40))
   const production = await resetInstance(
-    { directory: f.directory, terraform: f.terraform, confirm: refuse },
+    { directory: f.directory, release: f.release, terraform: f.terraform, confirm: refuse },
     noTerraform
   )
   expect(production.status).toBe("live_resources")
   if (production.status !== "live_resources") return
   const helper = `bun --no-env-file ${join(f.terraform.directory, "scripts", "gcp.ts")}`
   expect(production.commands).toEqual([
-    `${helper} init --source ${f.source} --instance-dir ${f.directory} && ${helper} destroy --source ${f.source} --instance-dir ${f.directory}`,
+    `${helper} init --release ${f.source} --instance-dir ${f.directory} && ${helper} destroy --release ${f.source} --instance-dir ${f.directory}`,
   ])
   expect(production.message).toContain(
-    `first set "deletion_protection": false in ${join(f.files, "terraform.tfvars.json")} and run ${helper} apply --source ${f.source} --instance-dir ${f.directory}.`
+    `first set "deletion_protection": false in ${join(f.files, "terraform.tfvars.json")} and run ${helper} apply --release ${f.source} --instance-dir ${f.directory}.`
   )
   writeFileSync(
     join(f.files, "terraform.tfvars.json"),
@@ -157,7 +166,7 @@ test("on Google Cloud the refusal adds the deletion-protection step, unless the 
     })
   )
   const evaluation = await resetInstance(
-    { directory: f.directory, terraform: f.terraform, confirm: refuse },
+    { directory: f.directory, release: f.release, terraform: f.terraform, confirm: refuse },
     noTerraform
   )
   expect(evaluation.message).not.toContain("deletion_protection")
@@ -169,7 +178,7 @@ test("scoped Cloudflare tokens still in their own state block a reset, even befo
   mkdirSync(tokenRoot, { recursive: true })
   writeFileSync(join(tokenRoot, "terraform.tfstate"), state(2))
   const report = await resetInstance(
-    { directory: f.directory, terraform: f.terraform, confirm: refuse },
+    { directory: f.directory, release: f.release, terraform: f.terraform, confirm: refuse },
     noTerraform
   )
   expect(report.status).toBe("live_resources")
@@ -219,14 +228,14 @@ test("reset deletes a never-deployed directory's settings and credentials once c
   ])
   expect(report.message).toContain("Clerk application")
   expect(
-    await resetInstance({ directory: f.directory, terraform: f.terraform }, noTerraform)
+    await resetInstance({ directory: f.directory, release: f.release, terraform: f.terraform }, noTerraform)
   ).toMatchObject({ status: "nothing_to_reset" })
 })
 
 test("without a confirmation reset only lists what it would delete; declining keeps it all", async () => {
   const f = instance()
   const unconfirmed = await resetInstance(
-    { directory: f.directory, terraform: f.terraform },
+    { directory: f.directory, release: f.release, terraform: f.terraform },
     noTerraform
   )
   expect(unconfirmed).toMatchObject({
@@ -239,7 +248,7 @@ test("without a confirmation reset only lists what it would delete; declining ke
   })
   expect(unconfirmed.message).toContain("--yes")
   const declined = await resetInstance(
-    { directory: f.directory, terraform: f.terraform, confirm: async () => false },
+    { directory: f.directory, release: f.release, terraform: f.terraform, confirm: async () => false },
     noTerraform
   )
   expect(declined.status).toBe("cancelled")
@@ -258,7 +267,7 @@ test("after a destroy, reset also clears this instance's Terraform variables, pl
   writeFileSync(join(tokenRoot, "terraform.tfstate"), state(0))
   writeFileSync(join(f.directory, ".cloudflare-bootstrap.json"), "{}")
   const report = await resetInstance(
-    { directory: f.directory, terraform: f.terraform, confirm: async () => true },
+    { directory: f.directory, release: f.release, terraform: f.terraform, confirm: async () => true },
     noTerraform
   )
   expect(report.status).toBe("reset_complete")
@@ -296,7 +305,7 @@ test("an installation whose state is in its bucket is read through the drivers",
     stdout: "module.base.module.cloudflare.cloudflare_r2_bucket.files\ndata.cloudflare_zone.x\n",
   })
   const refused = await resetInstance(
-    { directory: live.f.directory, terraform: live.f.terraform, confirm: refuse },
+    { directory: live.f.directory, release: live.f.release, terraform: live.f.terraform, confirm: refuse },
     live.execute
   )
   expect(refused).toMatchObject({
@@ -316,6 +325,7 @@ test("an installation whose state is in its bucket is read through the drivers",
   const report = await resetInstance(
     {
       directory: unreadable.f.directory,
+      release: unreadable.f.release,
       terraform: unreadable.f.terraform,
       confirm: refuse,
     },
@@ -333,7 +343,7 @@ test("an installation whose state is in its bucket is read through the drivers",
   writeFileSync(join(unmoved.f.files, "terraform.tfstate"), state(1))
   expect(
     await resetInstance(
-      { directory: unmoved.f.directory, terraform: unmoved.f.terraform, confirm: refuse },
+      { directory: unmoved.f.directory, release: unmoved.f.release, terraform: unmoved.f.terraform, confirm: refuse },
       unmoved.execute
     )
   ).toMatchObject({
@@ -347,6 +357,7 @@ test("an installation whose state is in its bucket is read through the drivers",
       await resetInstance(
         {
           directory: destroyed.f.directory,
+          release: destroyed.f.release,
           terraform: destroyed.f.terraform,
           confirm: async () => true,
         },
@@ -356,29 +367,35 @@ test("an installation whose state is in its bucket is read through the drivers",
   ).toBe("reset_complete")
 })
 
-test("a live installation whose checkout is gone asks for --source, and gets the destroy commands for the checkout it names", async () => {
+test("a live installation whose release cannot be prepared says why, and gets the destroy commands once it can", async () => {
   const f = instance({ deployed: true })
   writeFileSync(join(f.files, "terraform.tfstate"), state(1))
-  rmSync(f.source, { recursive: true })
   const missing = await resetInstance(
-    { directory: f.directory, terraform: f.terraform, confirm: refuse },
+    {
+      directory: f.directory,
+      release: async () => {
+        throw new CliError("Could not reach https://api.azad.pro/api/v3/releases/5.30.0/manifest.json.")
+      },
+      terraform: f.terraform,
+      confirm: refuse,
+    },
     noTerraform
   )
-  expect(missing.status).toBe("live_resources")
+  expect(missing).toMatchObject({ status: "live_resources" })
+  if (missing.status !== "live_resources") return
   expect(missing.message).toContain(
-    "Rerun with --source pointing to the Azad checkout that deployed this instance."
+    "The destroy commands run with the release this installation runs, which azad could not prepare: Could not reach"
   )
-  const moved = join(f.root, "moved-source")
-  mkdirSync(moved)
+  expect(missing.commands.join("\n")).not.toContain("destroy --root")
   const named = await resetInstance(
-    { directory: f.directory, terraform: f.terraform, source: moved, confirm: refuse },
+    { directory: f.directory, release: f.release, terraform: f.terraform, confirm: refuse },
     noTerraform
   )
   expect(named).toMatchObject({ status: "live_resources" })
   if (named.status !== "live_resources") return
-  expect(named.message).not.toContain("Rerun with --source")
+  expect(named.message).not.toContain("could not prepare")
   expect(named.commands[0]).toEndWith(
-    `destroy --root postgres --source ${moved} --instance-dir ${f.directory}`
+    `destroy --root postgres --release ${f.source} --instance-dir ${f.directory}`
   )
   expect(existsSync(join(f.directory, ".env"))).toBe(true)
 })
@@ -394,7 +411,7 @@ test("destroy commands name the pinned azad-terraform in the cache, and how to g
     url: "https://downloads.example.com/azad-terraform-0.0.1.tar.gz",
   }
   const report = await resetInstance(
-    { directory: f.directory, terraform: release, confirm: refuse },
+    { directory: f.directory, release: f.release, terraform: release, confirm: refuse },
     noTerraform
   )
   expect(report.status).toBe("live_resources")

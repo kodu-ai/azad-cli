@@ -10,6 +10,8 @@ import { fixedSettingChanges, fixedSettingsMessage } from "./deployed-settings"
 import { CliError } from "../../error"
 import { validateBootstrapFile } from "./bootstrap-credentials"
 import { verifyCompletedBootstrap } from "./cloudflare-bootstrap"
+import { releaseResolver, type ReleaseResolver } from "./release"
+import { deploymentStarted } from "../update/installation"
 import {
   configure,
   OPTIONAL_SETTING_KEYS,
@@ -167,7 +169,7 @@ function readInput(path?: string): Input {
   }
 }
 
-/** Suppresses provider output; only explicitly requested tool-version and Git results are captured internally. */
+/** Suppresses provider output; only explicitly requested tool-version, Git and driver results are captured internally. */
 export const quietRun: Run = (command, args, cwd, capture = false) => {
   const result = spawnToolSync(command, args, {
     cwd,
@@ -194,8 +196,12 @@ export async function runAutomation(
     directory: string
     configPath?: string
     credentialsPath?: string
-    /** The Azad app source checkout to deploy; defaults to the instance's saved one. */
+    /** An Azad app checkout to build a local release from (`--source`, development). */
     source?: string
+    /** The published release a new install deploys (`--version`); default latest. */
+    version?: string
+    /** Prepares the release; defaults to {@link releaseResolver} for `source` and `version`. */
+    release?: ReleaseResolver
     /** The azad-terraform drivers a deploy runs; defaults to the pinned release. */
     terraform?: TerraformSelection
     action: Exclude<AutomationAction, "schema">
@@ -314,12 +320,11 @@ export async function runAutomation(
   // still in memory and before any write or backend invocation. Automation
   // never changes a deployed instance; a setting the deploy fixed is also
   // named, since changing it means destroying the installation.
-  const fixed = existing.AZAD_CLI_SOURCE_REVISION
-    ? fixedSettingChanges(existing, values)
-    : []
+  const started = deploymentStarted(existing)
+  const fixed = started ? fixedSettingChanges(existing, values) : []
   for (const field of fixed) issues.push({ field, problem: "immutable" })
   if (
-    existing.AZAD_CLI_SOURCE_REVISION &&
+    started &&
     [...new Set([...Object.keys(existing), ...Object.keys(values)])].some(
       (key) => existing[key] !== values[key]
     )
@@ -344,20 +349,20 @@ export async function runAutomation(
     verifyCompletedBootstrap(options.directory, values)
   if (options.action === "status")
     return { status: "configuration_ready", issues: [] }
-  if (
-    options.action !== "configure" &&
-    !options.source &&
-    !existing.AZAD_CLI_SOURCE
-  )
-    return { status: "backend_unavailable", issues: [] }
   const config = new LocalConfig(options.directory)
-  if (!existing.AZAD_CLI_SOURCE_REVISION) config.save(values)
+  if (!started) config.save(values)
   if (options.action === "configure")
     return { status: "configuration_saved", issues: [] }
   const outcome = await deployInstance(
     config,
     {
-      source: options.source ?? existing.AZAD_CLI_SOURCE,
+      release:
+        options.release ??
+        releaseResolver(
+          options.directory,
+          { source: options.source, version: options.version },
+          { execute }
+        ),
       terraform: options.terraform ?? selectTerraform(),
     },
     {

@@ -12,13 +12,7 @@ export type Tool = {
 
 const NODE_DOWNLOAD = "https://nodejs.org/en/download"
 
-const GIT: Tool = {
-  name: "Git",
-  command: "git",
-  args: ["--version"],
-  minimum: [2, 0, 0],
-  url: "https://git-scm.com/downloads",
-}
+/** The drivers, the installer and the updater run on Bun. */
 const BUN: Tool = {
   name: "Bun",
   command: "bun",
@@ -26,16 +20,14 @@ const BUN: Tool = {
   minimum: [1, 4, 4],
   url: "https://bun.sh/docs/installation",
 }
-/** The deployment helpers run on Node.js 26.12.1+. */
-const NODE: Tool = {
+/** The pinned Clerk CLI (`npx clerk@4.0.0`) declares Node.js 20+. */
+const NODE_FOR_CLERK: Tool = {
   name: "Node.js",
   command: "node",
   args: ["--version"],
-  minimum: [26, 12, 1],
+  minimum: [20, 0, 0],
   url: NODE_DOWNLOAD,
 }
-/** The pinned Clerk CLI (`npx clerk@4.0.0`) declares Node.js 20+. */
-const NODE_FOR_CLERK: Tool = { ...NODE, minimum: [20, 0, 0] }
 /** npx comes with Node.js; `npx --yes` needs npm 7+. */
 const NPX: Tool = {
   name: "npm (npx)",
@@ -43,6 +35,22 @@ const NPX: Tool = {
   args: ["--version"],
   minimum: [7, 0, 0],
   url: NODE_DOWNLOAD,
+}
+/** The deploy downloads with curl. */
+const CURL: Tool = {
+  name: "curl",
+  command: "curl",
+  args: ["--version"],
+  minimum: [7, 0, 0],
+  url: "https://curl.se/download.html",
+}
+/** Releases and azad-terraform are unpacked with tar (GNU tar or bsdtar). */
+const TAR: Tool = {
+  name: "tar",
+  command: "tar",
+  args: ["--version"],
+  minimum: [1, 0, 0],
+  url: "https://www.gnu.org/software/tar/",
 }
 const TERRAFORM: Tool = {
   name: "Terraform",
@@ -71,7 +79,7 @@ export type ToolNeeds = {
   clerkCli?: boolean
   /** Google Cloud target or Cloud SQL: gcloud. */
   googleCloud?: boolean
-  /** Deploying from a checkout: Git, Bun, Node.js, npx and Terraform. */
+  /** Deploying a release: Bun, Terraform, curl and tar. */
   deploy?: boolean
 }
 
@@ -96,14 +104,17 @@ export function wizardNeeds(values: Record<string, string>): ToolNeeds {
   return { clerkCli: !manualClerk, googleCloud: needsGoogleCloud(values) }
 }
 
-/** The tools `needs` require, each once, in the order they are listed to a person. */
+/**
+ * The tools `needs` require, each once, in the order they are listed to a
+ * person: Node.js 20+ and npx for the Clerk CLI, then Bun, Terraform, curl
+ * and tar to deploy, then gcloud.
+ */
 export function requiredTools(needs: ToolNeeds): Tool[] {
-  const tools = needs.deploy
-    ? [GIT, BUN, NODE, NPX, TERRAFORM]
-    : needs.clerkCli
-      ? [NODE_FOR_CLERK, NPX]
-      : []
-  return needs.googleCloud ? [...tools, GCLOUD] : tools
+  return [
+    ...(needs.clerkCli ? [NODE_FOR_CLERK, NPX] : []),
+    ...(needs.deploy ? [BUN, TERRAFORM, CURL, TAR] : []),
+    ...(needs.googleCloud ? [GCLOUD] : []),
+  ]
 }
 
 /** A required tool that is not installed (`found` undefined) or older than its minimum. */
@@ -122,9 +133,10 @@ export function checkTools(
     } catch {
       return [{ tool }]
     }
-    const match = result.stdout.match(/(\d+)\.(\d+)\.(\d+)/u)
+    // GNU tar prints two-part versions (tar (GNU tar) 1.35).
+    const match = result.stdout.match(/(\d+)\.(\d+)(?:\.(\d+))?/u)
     if (result.status !== 0 || !match) return [{ tool }]
-    const version = match.slice(1, 4).map(Number)
+    const version = match.slice(1, 4).map((part) => Number(part ?? 0))
     const difference = version.findIndex(
       (value, i) => value !== tool.minimum[i]
     )
@@ -155,18 +167,17 @@ export function missingToolsMessage(lines: string[]): string {
 
 /**
  * The deployment tools that are missing or too old, as {@link toolProblemLines}
- * lists them: Git, Bun, Node.js, npx and Terraform, and gcloud for `gcp`.
+ * lists them: Bun, Terraform, curl and tar, and gcloud for `gcp` (the Google
+ * Cloud target or a Cloud SQL database).
  */
 export function missingPrerequisites(
-  cwd: string,
   execute: Run = run,
   target = "cloudflare"
 ): string[] {
   return toolProblemLines(
     checkTools(
       requiredTools({ deploy: true, googleCloud: target === "gcp" }),
-      execute,
-      cwd
+      execute
     )
   )
 }

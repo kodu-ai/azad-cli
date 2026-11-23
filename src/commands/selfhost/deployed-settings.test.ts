@@ -57,8 +57,8 @@ async function deployedInstance(target: "cloudflare" | "gcp") {
   })
   config.save({
     ...config.read(),
-    AZAD_CLI_SOURCE_REVISION: "a".repeat(40),
-    AZAD_CLI_SOURCE: join(root, "source"),
+    AZAD_CLI_RELEASE_VERSION: "5.30.0",
+    AZAD_CLI_RELEASE_SHA: "a".repeat(40),
   })
   writeFileSync(
     config.envPath,

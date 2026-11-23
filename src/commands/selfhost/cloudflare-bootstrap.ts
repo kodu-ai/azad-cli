@@ -22,8 +22,8 @@ import { validateBootstrapFile } from "./bootstrap-credentials"
 import type { Run } from "../../process"
 import { driverPath } from "./terraform"
 
-/** The checkouts a token operation runs: the app source it binds to, and the azad-terraform directory whose driver runs. */
-export type BootstrapSources = { source: string; terraform: string }
+/** What a token operation runs: the release directory it binds to, and the azad-terraform directory whose driver runs. */
+export type BootstrapSources = { release: string; terraform: string }
 
 const id = z.string().regex(/^[a-f0-9]{32}$/u)
 const revision = z.string().regex(/^[a-f0-9]{40}$/u)
@@ -359,7 +359,7 @@ async function performBootstrap(
   const input = configFor(values, sourceRevision)
   if (existing && !sameConfig(existing.config, input))
     throw new CliError(
-      "Resume Cloudflare bootstrap with its original source and instance settings."
+      "Resume Cloudflare bootstrap with its original release and instance settings."
     )
   if (!existing && existsSync(location.state))
     throw new CliError(
@@ -393,8 +393,8 @@ async function performBootstrap(
         values.AZAD_CLI_CLOUDFLARE_BOOTSTRAP_FILE,
         "--state-dir",
         location.state,
-        "--source",
-        sources.source,
+        "--release",
+        sources.release,
       ],
       sources.terraform,
       true

@@ -34,7 +34,7 @@ function deployedInstance(options: { handoff?: boolean } = {}) {
   mkdirSync(state, { recursive: true, mode: 0o700 })
   writeFileSync(
     join(directory, ".env"),
-    "AZAD_CLI_TARGET=gcp\nAZAD_CLI_SOURCE_REVISION=" + "c".repeat(40) + "\n",
+    "AZAD_CLI_TARGET=gcp\nAZAD_CLI_RELEASE_VERSION=5.29.0\nAZAD_CLI_RELEASE_SHA=" + "c".repeat(40) + "\n",
     { mode: 0o600 }
   )
   const store = { kind: "gcs", bucket: "azad-1a2b3c4d-install", project_id: "my-project" }

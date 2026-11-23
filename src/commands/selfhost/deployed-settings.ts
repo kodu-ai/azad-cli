@@ -1,5 +1,5 @@
 import type { LocalConfig } from "./config"
-import { instanceTerraformDirectory } from "./deploy"
+import { instanceTerraformDirectory } from "./instance"
 import { CliError } from "../../error"
 import { configure, type Questions } from "./wizard"
 
@@ -197,9 +197,9 @@ export async function changeSettings(
 }
 
 /**
- * Once an instance's deployment has started (`AZAD_CLI_SOURCE_REVISION` is
- * saved), asks whether to resume it with the saved settings (the default, so
- * Enter resumes) or to change settings first ({@link changeSettings}).
+ * Once an instance's deployment has started (its release is recorded),
+ * asks whether to resume it with the saved settings (the default, so Enter
+ * resumes) or to change settings first ({@link changeSettings}).
  * Returns undefined to resume, otherwise the names of the changed settings.
  */
 export async function resumeOrChangeSettings(

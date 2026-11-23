@@ -29,6 +29,7 @@ import {
   CloudflareTokenRejectedError,
   findCloudflareZone,
 } from "./cloudflare-account"
+import { deploymentStarted } from "../update/installation"
 import { verifyCompletedBootstrap } from "./cloudflare-bootstrap"
 import { LocalConfig, readPrivateEnv, serializeEnv } from "./config"
 import {
@@ -789,21 +790,18 @@ async function provisionGcpProject(values: Record<string, string>) {
 
 /**
  * Supplies the interactive protected-input boundary, the automatic provider
- * steps and the tool check. With `source` (a deploy follows) the check also
- * covers the deployment tools. Each tool's version is read once per run.
+ * steps and the tool check, which also covers the deployment tools: a deploy
+ * follows the questions. Each tool's version is read once per run.
  */
 export function terminalFor(
   config: LocalConfig,
-  options: { source?: string; execute?: Run } = {}
+  options: { execute?: Run } = {}
 ): Questions {
   const checked = new Map<Tool, ToolProblem[]>()
   return {
     ...terminal,
     requireTools(needs) {
-      const problems = requiredTools({
-        ...needs,
-        deploy: Boolean(options.source),
-      }).flatMap((tool) => {
+      const problems = requiredTools({ ...needs, deploy: true }).flatMap((tool) => {
         const known = checked.get(tool) ?? checkTools([tool], options.execute)
         checked.set(tool, known)
         return known
@@ -1308,7 +1306,7 @@ export async function configure(
   if (
     values.AZAD_CLI_CLOUDFLARE_AUTH ||
     cloudflareAuth === "bootstrap" ||
-    !values.AZAD_CLI_SOURCE_REVISION
+    !deploymentStarted(values)
   )
     values.AZAD_CLI_CLOUDFLARE_AUTH = cloudflareAuth
   save()
