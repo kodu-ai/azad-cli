@@ -85,7 +85,7 @@ The commands you'll actually use:
   settings. The ones the first deploy fixed (target, hostname, database,
   cloud project, Mini Apps domain…) are shown, not asked. A re-deploy uses the
   release the installation runs now, never an older one.
-- `azad --version 4.497.0`: install that release instead of the latest. On a
+- `azad --version 4.496.29`: install that release instead of the latest. On a
   running installation it moves it to a newer release, with a Terraform plan
   to review; an older one is refused.
 - `azad --instance staging`: a second, separate installation. Add the same

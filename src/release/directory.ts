@@ -60,7 +60,7 @@ export const RELEASE_LAYOUT = {
  * azad-terraform drivers run ({@link INSTALLER_ENTRIES}). Older releases are
  * refused, with this version named.
  */
-export const FIRST_INSTALLER_RELEASE = "4.497.0"
+export const FIRST_INSTALLER_RELEASE = "4.496.29"
 
 /** The installer entrypoints a release payload must carry, by payload path. */
 export const INSTALLER_ENTRIES = [

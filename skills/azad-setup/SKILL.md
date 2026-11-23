@@ -124,7 +124,7 @@ Ask only what you do not know yet:
    everything in WSL (Ubuntu). Tell the person the full path; they run it in
    their own terminal.
 2. **The Azad release.** Nothing to prepare. A new install takes the latest
-   release (`--version x.y.z` picks another, 4.497.0 or newer); an existing
+   release (`--version x.y.z` picks another, 4.496.29 or newer); an existing
    one keeps the release it runs. The deploy downloads it, verifies it and
    keeps it in `~/.azad/cache/releases/<version>/`. The driver commands below
    call that directory `$R`; `--doctor` names the release an instance
@@ -444,7 +444,7 @@ instance for the same hostname needs the old one deleted first.
   reports it to the Azad maintainers (or updates azad, for a new key).
 - "Could not reach https://api.azad.pro/api/v3/releases/…": the machine is
   offline or behind a proxy. Fix the connection and rerun the same command.
-- "… has no installer … Installs start with Azad 4.497.0": the chosen release
+- "… has no installer … Installs start with Azad 4.496.29": the chosen release
   is too old for this azad. Choose that release or a newer one.
 - "This installation runs Azad x, which is newer than y": a `--version` or
   local build older than what the installation runs. Use x or later.

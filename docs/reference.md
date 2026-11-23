@@ -163,7 +163,7 @@ manifest. It unpacks into a fresh private directory, writes `release.json`
 last and moves it to `~/.azad/cache/releases/<version>/`. The updater comes
 first: a release whose `payload.json` lists no `installer/cloudflare-install.js`
 is refused, naming the first release that has the installer
-(`FIRST_INSTALLER_RELEASE`, 4.497.0), before its web build is downloaded.
+(`FIRST_INSTALLER_RELEASE`, 4.496.29), before its web build is downloaded.
 `AZAD_RELEASE_ORIGIN` points `azad` at another origin (tests); the pinned key
 stays the same.
 
