@@ -60,6 +60,7 @@ PUBLISHABLE = "pk_live_" + base64.b64encode(b"clerk.board.example.com$").decode(
 GOOGLE_ID = "123-fixture.apps.googleusercontent.com"
 GOOGLE_SECRET = "GOCSPX-fixture-google"
 GOOGLE_CALLBACK = "https://clerk.board.example.com/v1/oauth_callback"
+MINIAPPS = "apps.example.com"
 # Where a deploy stops without network: downloading the public release.
 OFFLINE = "Could not reach https://api.azad.pro/api/v3/releases/"
 
@@ -354,6 +355,21 @@ def offline_deploy(child):
     finish(child, 1)
 
 
+def miniapps(child, first=None):
+    """Mini Apps on their own domain (Enter), checked against the account's
+    zones: `first` is a domain in no zone, asked again; then MINIAPPS, a
+    subdomain of the fixture zone."""
+    child.expect_exact("Where should Mini Apps run?")
+    child.send("\r")
+    child.expect_exact("Mini Apps domain (such as apps.example.com)")
+    if first:
+        child.send(first + "\r")
+        child.expect_exact(f"None of your Cloudflare accounts has a zone for {first}.")
+        child.expect_exact("Mini Apps domain (such as apps.example.com)")
+    child.send(MINIAPPS + "\r")
+    child.expect_exact(f"Mini Apps domain: {MINIAPPS}, in the zone example.com")
+    child.expect_exact("Advanced Certificate Manager on example.com")
+
 
 def env_file(directory):
     path = directory / ".env"
@@ -501,10 +517,11 @@ try:
     child.expect_exact("Cloudflare token")
     child.send(ROOT_TOKEN + "\r")
     child.expect_exact("Cloudflare account: Fixture Account")
+    miniapps(child, first="example-apps.com")
     clerk_by_cli(child)
     webhook_and_github(child, clerk_automated=True, google=True)
     # Everything else keeps its default unless the person opens optional settings.
-    child.expect_exact("Defaults: Mini Apps on, meetings on (Cloudflare RealtimeKit), project repositories on Cloudflare Artifacts")
+    child.expect_exact(f"Defaults: Mini Apps on {MINIAPPS}, meetings on (Cloudflare RealtimeKit), project repositories on Cloudflare Artifacts")
     child.expect_exact("Configure optional settings?")
     child.send("n")
     # The deploy follows at once; it needs the public release.
@@ -519,13 +536,14 @@ try:
     for expected in ["AZAD_CLI_TARGET='cloudflare'", "AZAD_CLI_DATABASE_SERVICE='neon'",
                      "AZAD_CLI_DATABASE_PROVIDER='postgres'", f"CLOUDFLARE_ACCOUNT_ID='{ACCOUNT}'",
                      f"CLERK_PUBLISHABLE_KEY='{PUBLISHABLE}'", "AZAD_CLI_CLERK_INSTANCE_ID='ins_prod'",
-                     "GITHUB_APP_ID='4242'", "AZAD_SELF_HOST_MINIAPPS='enabled'",
-                     f"V3_CF_ACCOUNT_ID='{ACCOUNT}'", "AZAD_SELF_HOST_DATABASE_CA='neon-isrg-root-x1'",
+                     "GITHUB_APP_ID='4242'", f"AZAD_CLI_MINIAPPS_DOMAIN='{MINIAPPS}'",
+                     "AZAD_SELF_HOST_DATABASE_CA='neon-isrg-root-x1'",
                      "AZAD_CLI_MANAGED_SOURCE='enabled'", "AZAD_CLI_MEETINGS='enabled'",
                      "AZAD_CLI_STORAGE='default'",
                      "@ep-test.aws.neon.tech/azad?sslmode=verify-full'"]:
         assert expected in saved, expected
     assert ROOT_TOKEN not in saved and WRONG_TOKEN not in saved and "channel_binding" not in saved
+    assert "V3_CF_" not in saved and "AZAD_SELF_HOST_MINIAPPS" not in saved
     assert "AZAD_CLI_RELEASE_SHA" not in saved, "A deploy that never started recorded a release"
     assert "AZAD_CLI_CLERK_GITHUB_SIGN_IN" not in saved
     assert "AZAD_CLI_CLERK_GOOGLE_SIGN_IN='enabled'" in saved
@@ -585,6 +603,12 @@ try:
     child.expect_exact("Cloudflare token (Enter keeps saved token)")
     child.send("\r")
     child.expect_exact("Cloudflare account: Fixture Account")
+    # The saved domain keeps with Enter, and is checked again.
+    child.expect_exact("Where should Mini Apps run?")
+    child.send("\r")
+    child.expect_exact("Mini Apps domain (such as apps.example.com)")
+    child.send("\r")
+    child.expect_exact(f"Mini Apps domain: {MINIAPPS}, in the zone example.com")
     child.expect_exact("Clerk: using the saved application keys.")
     child.expect_exact("Clerk webhook signing secret (Enter keeps saved value)")
     child.send("\r")
@@ -660,6 +684,7 @@ try:
     assert opened(TOKENS_PAGE) == opens_before + 1
     child.send(ROOT_TOKEN + "\r")
     child.expect_exact("Cloudflare account: Fixture Account")
+    miniapps(child)
     child.expect_exact("The Clerk CLI could not start")
     child.expect_exact("Clerk publishable key (production)")
     cancel(child)
@@ -682,12 +707,14 @@ try:
     child.send(WEB + "\r")
     token(child)
     child.expect_exact("Cloudflare account: Fixture Account")
+    # Not now: no domain is asked.
+    child.expect_exact("Where should Mini Apps run?")
+    child.send("\x1b[B\r")
     clerk_by_hand(child, "The Clerk CLI could not start (offline, or the npm registry is blocked)")
     webhook_and_github(child, "acme-inc")
+    child.expect_exact("Defaults: Mini Apps off")
     child.expect_exact("Configure optional settings?")
     child.send("y")
-    child.expect_exact("Enable Mini Apps?")
-    child.send("n")
     child.expect_exact("Enable projects (managed project source on Cloudflare Artifacts)?")
     child.send("n")
     child.expect_exact("Enable meetings (Cloudflare RealtimeKit)?")
@@ -700,15 +727,16 @@ try:
     child.send("n")
     offline_deploy(child)
     masked(transcript)
+    assert "Mini Apps domain" not in transcript.getvalue() and "Enable Mini Apps" not in transcript.getvalue()
     saved = env_file(postgres)
     for expected in ["AZAD_CLI_DATABASE_SERVICE='postgres'", "AZAD_CLI_DATABASE_PROVIDER='postgres'",
-                     "AZAD_SELF_HOST_MINIAPPS='disabled'", f"CLERK_PUBLISHABLE_KEY='{PUBLISHABLE}'",
+                     "AZAD_CLI_MINIAPPS_DOMAIN='none'", f"CLERK_PUBLISHABLE_KEY='{PUBLISHABLE}'",
                      "AZAD_CLI_MANAGED_SOURCE='disabled'"]:
         assert expected in saved, expected
     assert "V3_CF_ACCOUNT_ID" not in saved
     assert json.loads(lines(github_log)[-1])["action"].startswith(
         "https://github.com/organizations/acme-inc/settings/apps/new?state=")
-    print("cloudflare/postgres: manual Clerk when its CLI cannot start, organization App, Mini Apps off in optional settings PASS")
+    print("cloudflare/postgres: manual Clerk when its CLI cannot start, organization App, Mini Apps not now PASS")
 
     # Cloud SQL with a Clerk CLI that cannot start.
     cloudsql = root / "cloudsql"
@@ -730,6 +758,7 @@ try:
     child.send(WEB + "\r")
     token(child)
     child.expect_exact("Cloudflare account: Fixture Account")
+    miniapps(child)
     clerk_by_hand(child, "The Clerk CLI could not start (offline, or the npm registry is blocked)")
     webhook_and_github(child)
     child.expect_exact("Configure optional settings?")
@@ -780,6 +809,8 @@ try:
     masked(transcript)
     output = transcript.getvalue()
     assert "Enable projects" not in output and "Enable Mini Apps" not in output
+    # Google Cloud asks nothing about where Mini Apps run.
+    assert "Where should Mini Apps run?" not in output
     assert "How often should the disks" not in output and "uploaded files" not in output
     assert "host your database" not in output
     saved = env_file(gcp)
@@ -819,6 +850,8 @@ try:
     child.expect_exact("Cloudflare token (Enter keeps saved token)")
     child.send("\r")
     child.expect_exact(f"Cloudflare account ID: {ACCOUNT} (fixed)")
+    child.expect_exact("Where should Mini Apps run: On their own domain (fixed)")
+    child.expect_exact(f"Mini Apps domain (such as apps.example.com): {MINIAPPS} (fixed)")
     child.expect_exact("Clerk: using the saved application keys.")
     child.expect_exact("Clerk webhook signing secret (Enter keeps saved value)")
     child.send("\r")
@@ -830,7 +863,6 @@ try:
     child.send("\r")
     child.expect_exact("Configure optional settings?")
     child.send("y")
-    child.expect_exact("Enable Mini Apps: yes (fixed)")
     child.expect_exact("Enable projects (managed project source on Cloudflare Artifacts): yes (fixed)")
     child.expect_exact("Enable meetings (Cloudflare RealtimeKit)?")
     child.send("n")

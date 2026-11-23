@@ -39,12 +39,13 @@ function fixture() {
   const configPath = join(root, "config.json")
   const credentialsPath = join(root, "private.env")
   const input = {
-    choices: { database: "postgres", miniapps: false },
+    choices: { database: "postgres" },
     fields: {
       AZAD_CLI_WEB_HOST: "board.example.com",
       CLOUDFLARE_ACCOUNT_ID: "b".repeat(32),
       CLERK_PUBLISHABLE_KEY: "pk_fixture",
       GITHUB_APP_ID: "123",
+      AZAD_CLI_MINIAPPS_DOMAIN: "example-apps.com",
     } as Record<string, string>,
   }
   const credentials = {
@@ -535,7 +536,6 @@ test("one bootstrap credential stays in its own private file during configuratio
       choices: {
         database: "postgres",
         cloudflareAuth: "bootstrap",
-        miniapps: true,
       },
       fields: {
         ...f.input.fields,
@@ -560,8 +560,10 @@ test("one bootstrap credential stays in its own private file during configuratio
   expect(saved.AZAD_CLI_CLOUDFLARE_BOOTSTRAP_FILE).toBe(bootstrapPath)
   expect(saved.CLOUDFLARE_BOOTSTRAP_API_TOKEN).toBeUndefined()
   expect(saved.CLOUDFLARE_API_TOKEN).toBeUndefined()
+  // Mini Apps never get a per-app Workers token.
   expect(saved.V3_CF_API_TOKEN).toBeUndefined()
-  expect(saved.V3_CF_ACCOUNT_ID).toBe(f.input.fields.CLOUDFLARE_ACCOUNT_ID)
+  expect(saved.V3_CF_ACCOUNT_ID).toBeUndefined()
+  expect(saved.AZAD_CLI_MINIAPPS_DOMAIN).toBe("example-apps.com")
   expect(readFileSync(join(f.directory, ".env"), "utf8")).not.toContain(
     "fixture-root-secret"
   )
@@ -698,19 +700,19 @@ test("configs written before the optional-settings switch keep their meaning", a
   const saved = () => parse(readFileSync(join(f.directory, ".env")))
   // Older keys answer the nested choices directly; the switch follows them.
   const legacy = await configure({
-    miniapps: false,
+    managedSource: false,
     optionalServices: true,
     email: true,
     advanced: true,
   })
   expect(legacy).toEqual({ status: "configuration_saved", issues: [] })
-  expect(saved().AZAD_SELF_HOST_MINIAPPS).toBe("disabled")
+  expect(saved().AZAD_CLI_MANAGED_SOURCE).toBe("disabled")
   expect(saved().RESEND_API_KEY).toBe("fixture-resend")
   expect(saved().SENTRY_ENVIRONMENT).toBe("production")
   // An explicit "off" switch makes the nested answers inactive.
-  const off = await configure({ optionalSettings: false, miniapps: false })
+  const off = await configure({ optionalSettings: false, managedSource: false })
   expect(off.issues).toContainEqual({
-    field: "miniapps",
+    field: "managedSource",
     problem: "inactive",
   })
   const schema = await automationSchema()
@@ -718,7 +720,7 @@ test("configs written before the optional-settings switch keep their meaning", a
     initial: false,
   })
   expect(Object.keys(schema.providers.neon.choices)).toEqual(
-    expect.arrayContaining(["miniapps", "optionalServices", "advanced"])
+    expect.arrayContaining(["managedSource", "optionalServices", "advanced"])
   )
 })
 
@@ -778,6 +780,60 @@ test("your own bucket is configurable without prompts, its keys only from the pr
   expect(saved.STORAGE_BUCKET).toBe("azad-files")
   expect(saved.STORAGE_SECRET_ACCESS_KEY).toBe("fixture-storage-secret")
   expect(JSON.stringify(result)).not.toContain("fixture-storage-secret")
+})
+
+test("on Cloudflare the Mini Apps domain is a field and Not now a choice; Google Cloud asks neither", async () => {
+  const schema = await automationSchema()
+  expect(schema.providers.neon.choices.miniApps).toMatchObject({
+    values: ["domain", "none"],
+    initial: "domain",
+  })
+  expect(schema.providers.neon.fields.AZAD_CLI_MINIAPPS_DOMAIN).toMatchObject({
+    secret: false,
+    optional: false,
+  })
+  expect(schema.googleCloud.choices.miniApps).toBeUndefined()
+  expect(schema.googleCloud.fields.AZAD_CLI_MINIAPPS_DOMAIN).toBeUndefined()
+  const f = fixture()
+  const status = async (
+    choices: Record<string, string>,
+    fields: Record<string, string>
+  ) => {
+    writeFileSync(
+      f.configPath,
+      JSON.stringify({ choices: { ...f.input.choices, ...choices }, fields })
+    )
+    return await runAutomation({ ...f, action: "status" }, noBackend)
+  }
+  const { AZAD_CLI_MINIAPPS_DOMAIN: _domain, ...fields } = f.input.fields
+  // The recommended default needs the domain.
+  expect((await status({}, fields)).issues).toContainEqual({
+    field: "AZAD_CLI_MINIAPPS_DOMAIN",
+    problem: "missing",
+  })
+  // A domain that shares a site with Azad is refused; a subdomain of the
+  // same zone is not.
+  for (const domain of ["board.example.com", "apps.board.example.com", "example.com", "x.api.board.example.com"])
+    expect(
+      (await status({}, { ...fields, AZAD_CLI_MINIAPPS_DOMAIN: domain })).issues
+    ).toContainEqual({ field: "AZAD_CLI_MINIAPPS_DOMAIN", problem: "invalid" })
+  expect(
+    (await status({}, { ...fields, AZAD_CLI_MINIAPPS_DOMAIN: "apps.example.com" }))
+      .status
+  ).toBe("configuration_ready")
+  // Not now saves none; a domain beside it is inactive.
+  expect((await status({ miniApps: "none" }, fields)).status).toBe(
+    "configuration_ready"
+  )
+  expect(
+    (await status({ miniApps: "none" }, f.input.fields)).issues
+  ).toContainEqual({ field: "AZAD_CLI_MINIAPPS_DOMAIN", problem: "inactive" })
+  writeFileSync(
+    f.configPath,
+    JSON.stringify({ choices: { ...f.input.choices, miniApps: "none" }, fields })
+  )
+  await runAutomation({ ...f, action: "configure" }, noBackend)
+  expect(parse(readFileSync(join(f.directory, ".env"))).AZAD_CLI_MINIAPPS_DOMAIN).toBe("none")
 })
 
 test("a plan records the release it deploys, never a checkout", async () => {

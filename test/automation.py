@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
     assert not instance.exists()
     config = root / "config.json"
     config.write_text(json.dumps({
-        "choices": {"database": "postgres", "miniapps": False},
+        "choices": {"database": "postgres", "miniApps": "none"},
         "fields": {"AZAD_CLI_WEB_HOST": "board.example.com",
                    "CLOUDFLARE_ACCOUNT_ID": "b" * 32,
                    "CLERK_PUBLISHABLE_KEY": "pk_fixture", "GITHUB_APP_ID": "123"}
@@ -97,7 +97,8 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
     admin.chmod(0o600)
     credentials.write_text("\n".join(line for line in credentials.read_text().splitlines() if not line.startswith("CLOUDFLARE_API_TOKEN=")) + "\n")
     data["choices"]["cloudflareAuth"] = "bootstrap"
-    data["choices"]["miniapps"] = True
+    data["choices"]["miniApps"] = "domain"
+    data["fields"]["AZAD_CLI_MINIAPPS_DOMAIN"] = "apps.example.com"
     data["fields"]["AZAD_CLI_CLOUDFLARE_BOOTSTRAP_FILE"] = str(admin)
     config.write_text(json.dumps(data))
     boot = root / "bootstrap-instance"
@@ -108,7 +109,7 @@ with tempfile.TemporaryDirectory(prefix="azad-automation-smoke-") as scratch:
     assert run("--non-interactive", *common)["status"] == "configuration_saved"
     normal = (boot / ".env").read_text()
     assert "fixture-secret-root" not in normal and "CLOUDFLARE_BOOTSTRAP_API_TOKEN" not in normal
-    assert "V3_CF_API_TOKEN" not in normal
+    assert "V3_CF_API_TOKEN" not in normal and "AZAD_CLI_MINIAPPS_DOMAIN='apps.example.com'" in normal
     tokens = run("--non-interactive", "--create-tokens", "--directory", str(boot), success=False, path=str(transport))
     assert tokens["status"] == "missing_prerequisites", tokens
     # Once a deploy has started, a setting it fixed cannot change; the report names it.

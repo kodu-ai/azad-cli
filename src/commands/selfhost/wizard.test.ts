@@ -8,6 +8,7 @@ import {
   CancelledError,
   configure,
   validateField,
+  type Field,
   type Questions,
 } from "./wizard"
 
@@ -45,6 +46,7 @@ function fixture(provider: string) {
             AZAD_CLI_GCP_PROJECT: "customer-project",
             AZAD_CLI_GCP_REGION: "europe-west1",
             AZAD_CLI_RUNNER_CIDR: "203.0.113.1/32",
+            AZAD_CLI_MINIAPPS_DOMAIN: "example-apps.com",
           }[field.key] ??
           `fixture-${field.key}`
       )
@@ -56,6 +58,7 @@ function fixture(provider: string) {
             cloudflareAuth: "manual",
             target: "cloudflare",
             storage: "default",
+            miniApps: "domain",
           } as Record<string, string>
         )[key ?? ""] ?? provider
       ),
@@ -73,7 +76,9 @@ test("existing PostgreSQL setup saves a complete local credential file without r
   expect(values.DATABASE_URL).toBe(
     "postgresql://user:fixture-pass@db.example.com/azad?sslmode=require"
   )
-  expect(values.AZAD_SELF_HOST_MINIAPPS).toBe("disabled")
+  // Setup derives the Mini App settings from the domain.
+  expect(values.AZAD_CLI_MINIAPPS_DOMAIN).toBe("example-apps.com")
+  expect(values.AZAD_SELF_HOST_MINIAPPS).toBeUndefined()
   expect(values.AZAD_INSTANCE_NAME).toBe("Azad")
   expect(f.fields).not.toContain("AZAD_INSTANCE_NAME")
   expect(f.fields).not.toContain("AZAD_CLI_GCP_REGION")
@@ -189,6 +194,7 @@ test("older PostgreSQL checkpoints keep their saved provider and secret", async 
     if (key === "cloudflareAuth") return "manual"
     if (key === "target") return "cloudflare"
     if (key === "storage") return "default"
+    if (key === "miniApps") return "domain"
     expect(choices.map((choice) => choice.label)).toEqual([
       "Neon",
       "Google Cloud SQL",
@@ -380,66 +386,105 @@ test("Google Cloud asks only the essentials; disk backups and storage keep their
   expect(f.notes.join("\n")).toContain("daily disk backups")
 })
 
-test("automatic Mini Apps need no question; one switch guards every optional setting", async () => {
+test("on Cloudflare Mini Apps run on their own domain by default; one switch guards every optional setting", async () => {
   const f = fixture("postgres")
-  f.questions.choose = async (_message, _choices, _initial, key) =>
-    (
-      {
-        cloudflareAuth: "bootstrap",
-        target: "cloudflare",
-        storage: "default",
-      } as Record<string, string>
-    )[key ?? ""] ?? "postgres"
+  const chosen: string[] = []
+  f.questions.choose = async (_message, choices, initial, key) => {
+    chosen.push(key ?? "")
+    if (key === "miniApps") {
+      expect(choices.map((choice) => choice.label)).toEqual([
+        "On their own domain",
+        "Not now",
+      ])
+      expect(initial).toBe("domain")
+    }
+    return (
+      (
+        {
+          cloudflareAuth: "bootstrap",
+          target: "cloudflare",
+          storage: "default",
+        } as Record<string, string>
+      )[key ?? ""] ??
+      initial ??
+      "postgres"
+    )
+  }
   const asked: string[] = []
   f.questions.confirm = async (_message, _initial, key) => {
     asked.push(key ?? "")
     return false
   }
   const values = await configure(f.config, f.questions)
+  expect(chosen).toContain("miniApps")
   expect(asked).toEqual(["optionalSettings"])
   // Without the switch, every optional feature keeps its default.
   expect(values.AZAD_CLI_MANAGED_SOURCE).toBe("enabled")
   expect(values.AZAD_CLI_MEETINGS).toBe("enabled")
   expect(values.AZAD_CLI_STORAGE).toBe("default")
-  expect(values.AZAD_SELF_HOST_MINIAPPS).toBe("enabled")
-  expect(values.V3_CF_ACCOUNT_ID).toBe(values.CLOUDFLARE_ACCOUNT_ID)
+  expect(values.AZAD_CLI_MINIAPPS_DOMAIN).toBe("example-apps.com")
+  expect(values.V3_CF_ACCOUNT_ID).toBeUndefined()
   expect(f.fields).not.toContain("V3_CF_API_TOKEN")
   expect(f.fields).not.toContain("SENTRY_DSN")
+  expect(f.notes.join("\n")).toContain("Mini Apps on example-apps.com")
 
-  // Optional settings can still turn automatic Mini Apps off.
+  // Optional settings no longer ask about Mini Apps on Cloudflare.
   asked.length = 0
-  const answers: Record<string, boolean> = {
-    optionalSettings: true,
-    miniapps: false,
-  }
   f.questions.confirm = async (_message, _initial, key) => {
     asked.push(key ?? "")
-    return answers[key ?? ""] ?? false
+    return key === "optionalSettings"
   }
-  const disabled = await configure(f.config, f.questions)
+  await configure(f.config, f.questions)
   expect(asked.filter((key) => key !== "replacePrivateKey")).toEqual([
     "optionalSettings",
-    "miniapps",
     "managedSource",
     "enableMeetings",
     "optionalServices",
     "advanced",
   ])
-  expect(disabled.AZAD_SELF_HOST_MINIAPPS).toBe("disabled")
-  expect(disabled.V3_CF_ACCOUNT_ID).toBeUndefined()
 })
 
-test("a manual Cloudflare token still asks for Mini Apps and their runtime token", async () => {
+test("the Mini Apps domain stands apart from Azad, and Not now never asks for a token", async () => {
   const f = fixture("postgres")
-  const asked: string[] = []
-  f.questions.confirm = async (_message, _initial, key) => {
-    asked.push(key ?? "")
-    return key === "miniapps"
+  let domain: Field | undefined
+  const original = f.questions.field
+  f.questions.field = (field, previous) => {
+    if (field.key === "AZAD_CLI_MINIAPPS_DOMAIN") domain = field
+    return original(field, previous)
   }
+  await configure(f.config, f.questions)
+  if (!domain) throw new Error("The Mini Apps domain was not asked")
+  expect(domain.cloudflareZone).toBe(true)
+  expect(domain.secret).toBeUndefined()
+  expect(domain.help).toContain("Advanced Certificate Manager")
+  for (const same of [
+    "board.example.com",
+    "api.board.example.com",
+    "apps.board.example.com",
+    "example.com",
+    "none",
+    "Apps Domain",
+  ])
+    expect(validateField(domain, same)).toBeDefined()
+  // A separate domain, or a subdomain of the web host's zone.
+  for (const apart of ["example-apps.com", "apps.example.com"])
+    expect(validateField(domain, apart)).toBeUndefined()
+
+  f.fields.length = 0
+  f.questions.field = original
+  f.questions.choose = async (_message, _choices, initial, key) =>
+    key === "miniApps"
+      ? "none"
+      : key === "cloudflareAuth"
+        ? "manual"
+        : key === "target"
+          ? "cloudflare"
+          : (initial ?? "postgres")
   const values = await configure(f.config, f.questions)
-  expect(asked).toEqual(["miniapps", "optionalSettings"])
-  expect(f.fields).toContain("V3_CF_API_TOKEN")
-  expect(values.AZAD_SELF_HOST_MINIAPPS).toBe("enabled")
+  expect(values.AZAD_CLI_MINIAPPS_DOMAIN).toBe("none")
+  expect(f.fields).not.toContain("AZAD_CLI_MINIAPPS_DOMAIN")
+  expect(f.fields).not.toContain("V3_CF_API_TOKEN")
+  expect(f.notes.join("\n")).toContain("Mini Apps off")
 })
 
 test("a pasted pooled Neon URL names the direct host it switched to, never the password", async () => {

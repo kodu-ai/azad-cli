@@ -112,7 +112,7 @@ const HELP = [
   "",
   "Each instance keeps its answers and private settings in its own directory: ~/.azad/instances/NAME (%USERPROFILE%\\.azad\\instances\\NAME on Windows). Without --instance the name is default; --directory PATH uses another directory instead. Terraform's state, the installation's receipts and its keys live in its own cloud (a bucket and secret store the deploy creates); the directory keeps a cache.",
   "Saves private local configuration after each answer and resumes it on the next run. Once every question is answered it deploys: it shows each Terraform plan and applies it only when you say yes.",
-  "The first question chooses where Azad runs: Cloudflare (Workers, Pages and Hyperdrive) or your Google Cloud (GKE Autopilot, Cloud SQL and Cloud Storage, with Cloudflare for DNS).",
+  "The first question chooses where Azad runs: Cloudflare (Workers, Pages and Hyperdrive) or your Google Cloud (GKE Autopilot, Cloud SQL and Cloud Storage, with Cloudflare for DNS). On Cloudflare, Mini Apps run on a domain of their own, which the wizard asks for.",
   "Right after it, the wizard checks the tools it needs and stops with a list of any that are missing or too old: Bun 1.4.4+, Terraform 1.13.4+, curl and tar to deploy; Node.js 20+ and npm (npx) for the Clerk CLI; gcloud for the Google Cloud target and Cloud SQL.",
   "--doctor checks the same tools for the target saved in the instance, which release a deploy uses and where azad-terraform is, without starting the wizard.",
   `A deploy installs a signed Azad release from api.azad.pro: azad checks the manifest's signature against the key it pins and every downloaded file against the manifest, and keeps the release in ~/.azad/cache/releases/VERSION. A new install takes the latest release; --version x.y.z picks another (Azad ${FIRST_INSTALLER_RELEASE} or newer). An existing install keeps the release it runs (azad update and console updates move it forward); --version moves it to a newer one, never an older one.`,
@@ -123,7 +123,7 @@ const HELP = [
   "--backup-keys DIR writes an offline copy of the installation's keys (secrets.json, release-key.pem) to the new directory DIR. Keep it off the cloud: on Cloudflare only the installation's own Worker can read the keys back.",
   "--take-over OPERATION lets a deploy take over the operation a stopped run on another machine left, once you have confirmed that run is gone (the refusal names it).",
   "--reset deletes the instance's saved answers, private settings, Terraform variables and deploy state so the next run starts from scratch; its Terraform state stays. While Terraform still records resources for the instance it deletes nothing and prints the destroy commands to run first, with the release the installation runs. Without a terminal it needs --yes.",
-  "After a deployment has started, a rerun offers to resume it or to change settings first; settings the deploy fixed (target, cloud project and region, hostname, database, storage) stay as they are.",
+  "After a deployment has started, a rerun offers to resume it or to change settings first; settings the deploy fixed (target, cloud project and region, hostname, database, storage, Mini Apps domain) stay as they are.",
   "",
 ].join("\n")
 

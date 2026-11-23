@@ -36,7 +36,13 @@ const configSchema = z.strictObject({
   webHost: hostname,
   apiHost: hostname,
   revision,
-  miniApps: z.boolean(),
+  /** The per-app Workers token (V3_CF_API_TOKEN) is never created. */
+  miniApps: z.literal(false),
+  /**
+   * The domain Mini Apps run on (Cloudflare target): the deployment token
+   * also covers the zone that holds it.
+   */
+  miniAppsDomain: hostname.optional(),
   verifyDatabaseCertificate: z.boolean(),
   registerDatabaseCertificate: z.boolean().optional(),
   /** Artifacts and Queues tokens for managed project source (Cloudflare target). */
@@ -56,7 +62,6 @@ const resultSchema = z.strictObject({
   zoneIds: z.array(id).min(1),
   tokenIds: z.strictObject({
     deployment: id,
-    miniapps: id.optional(),
     "managed-source": id.optional(),
     "managed-events": id.optional(),
   }),
@@ -70,7 +75,6 @@ const receiptSchema = z.strictObject({
 })
 const credentialsSchema = z.strictObject({
   CLOUDFLARE_API_TOKEN: z.string().min(1),
-  V3_CF_API_TOKEN: z.string().min(1).optional(),
   CLOUDFLARE_ARTIFACTS_API_TOKEN: z.string().min(1).optional(),
   CLOUDFLARE_ARTIFACTS_EVENTS_API_TOKEN: z.string().min(1).optional(),
 })
@@ -81,12 +85,7 @@ const stateSchema = z.object({
       name: z.literal("scoped"),
       instances: z.array(
         z.object({
-          index_key: z.enum([
-            "deployment",
-            "miniapps",
-            "managed-source",
-            "managed-events",
-          ]),
+          index_key: z.enum(["deployment", "managed-source", "managed-events"]),
           attributes: z.object({ id, value: z.string().min(1) }),
         })
       ),
@@ -107,6 +106,7 @@ function sameConfig(a: BootstrapConfig, b: BootstrapConfig): boolean {
     a.apiHost === b.apiHost &&
     a.revision === b.revision &&
     a.miniApps === b.miniApps &&
+    a.miniAppsDomain === b.miniAppsDomain &&
     a.verifyDatabaseCertificate === b.verifyDatabaseCertificate &&
     Boolean(a.registerDatabaseCertificate) ===
       Boolean(b.registerDatabaseCertificate) &&
@@ -144,19 +144,17 @@ function configFor(
       webHost: values.AZAD_CLI_WEB_HOST,
       apiHost: `api.${values.AZAD_CLI_WEB_HOST}`,
       revision: sourceRevision,
-      miniApps: values.AZAD_SELF_HOST_MINIAPPS === "enabled",
+      miniApps: false,
       verifyDatabaseCertificate,
     })
     // On Google Cloud the deployment token only serves DNS and TLS: Mini Apps
     // run on the Worker Loader, project repositories on the cluster's Forgejo,
     // and the database connection needs no Cloudflare CA.
     if (values.AZAD_CLI_TARGET === "gcp")
-      return {
-        ...input,
-        miniApps: false,
-        verifyDatabaseCertificate: false,
-        target: "gcp",
-      }
+      return { ...input, verifyDatabaseCertificate: false, target: "gcp" }
+    const miniApps = values.AZAD_CLI_MINIAPPS_DOMAIN
+    if (miniApps && miniApps !== "none")
+      input.miniAppsDomain = hostname.parse(miniApps)
     if (values.AZAD_SELF_HOST_DATABASE_CA === "neon-isrg-root-x1")
       input.registerDatabaseCertificate = true
     // Sent only when chosen, so helpers that predate it still accept the config.
@@ -229,8 +227,7 @@ function completedCredentials(
       result.accountId !== marker.config.accountId ||
       result.sourceRevision !== marker.config.revision ||
       resolve(result.credentialsFile) !== credentialsFile ||
-      JSON.stringify(receipt.zoneIds) !== JSON.stringify(result.zoneIds) ||
-      Boolean(result.tokenIds.miniapps) !== marker.config.miniApps
+      JSON.stringify(receipt.zoneIds) !== JSON.stringify(result.zoneIds)
     )
       throw new Error("Receipt mismatch")
     const credentials = credentialsSchema.parse(readPrivateEnv(credentialsFile))
@@ -238,7 +235,6 @@ function completedCredentials(
     // Artifacts push events need a Cloudflare queue, which Google Cloud lacks.
     const managedEvents = managed && marker.config.target !== "gcp"
     if (
-      Boolean(credentials.V3_CF_API_TOKEN) !== marker.config.miniApps ||
       Boolean(credentials.CLOUDFLARE_ARTIFACTS_API_TOKEN) !== managed ||
       Boolean(credentials.CLOUDFLARE_ARTIFACTS_EVENTS_API_TOKEN) !==
         managedEvents
@@ -251,7 +247,6 @@ function completedCredentials(
     const deployment = tokens.filter(
       (token) => token.index_key === "deployment"
     )
-    const miniapps = tokens.filter((token) => token.index_key === "miniapps")
     const managedTokens = (["managed-source", "managed-events"] as const).map(
       (key) => ({
         key,
@@ -278,12 +273,8 @@ function completedCredentials(
       throw new Error("State mismatch")
     if (
       deployment.length !== 1 ||
-      miniapps.length !== (marker.config.miniApps ? 1 : 0) ||
       deployment[0].attributes.id !== result.tokenIds.deployment ||
-      deployment[0].attributes.value !== credentials.CLOUDFLARE_API_TOKEN ||
-      (marker.config.miniApps &&
-        (miniapps[0].attributes.id !== result.tokenIds.miniapps ||
-          miniapps[0].attributes.value !== credentials.V3_CF_API_TOKEN))
+      deployment[0].attributes.value !== credentials.CLOUDFLARE_API_TOKEN
     )
       throw new Error("State mismatch")
     return credentials
@@ -326,7 +317,6 @@ export function verifyCompletedBootstrap(
   const credentials = completedCredentials(directory, marker, values)
   if (
     values.CLOUDFLARE_API_TOKEN !== credentials.CLOUDFLARE_API_TOKEN ||
-    values.V3_CF_API_TOKEN !== credentials.V3_CF_API_TOKEN ||
     values.CLOUDFLARE_ARTIFACTS_API_TOKEN !==
       credentials.CLOUDFLARE_ARTIFACTS_API_TOKEN
   )

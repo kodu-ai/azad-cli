@@ -233,6 +233,8 @@ export async function deployInstance(
       config.envPath,
       "--account-id",
       values.CLOUDFLARE_ACCOUNT_ID,
+      "--miniapps-domain",
+      values.AZAD_CLI_MINIAPPS_DOMAIN || "none",
     ]
     if (values.AZAD_CLI_DATABASE_PROVIDER === "cloudsql")
       args.push(

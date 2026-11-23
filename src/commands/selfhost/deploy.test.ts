@@ -87,6 +87,7 @@ function fixture(provider: "cloudsql" | "postgres", adc = true) {
     AZAD_CLI_GCP_PROJECT: "customer-project",
     AZAD_CLI_GCP_REGION: "europe-west1",
     AZAD_CLI_RUNNER_CIDR: "203.0.113.1/32",
+    AZAD_CLI_MINIAPPS_DOMAIN: "example-apps.com",
   })
   const files = instanceTerraformDirectory(config.directory, config.read())
   const notes: string[] = []
@@ -232,9 +233,11 @@ test("declining a plan retains configuration and does not apply", async () => {
   expect(f.config.read().AZAD_CLI_RELEASE_VERSION).toBe("5.30.0")
 })
 
-test("a move to another release is refreshed into the variables before planning", async () => {
+test("setup is told where Mini Apps run, and a move to another release is refreshed into the variables before planning", async () => {
   const f = fixture("postgres")
   await deployInstance(f.config, f.sources, f.questions, f.execute)
+  const setup = f.argv.find((args) => args[2] === "setup") ?? []
+  expect(setup[setup.indexOf("--miniapps-domain") + 1]).toBe("example-apps.com")
   expect(f.operations).not.toContain("refresh")
   // The installation moved on (azad update or a console update) since setup.
   const vars = join(f.files, "terraform.tfvars.json")
@@ -248,6 +251,13 @@ test("a move to another release is refreshed into the variables before planning"
   expect(f.sources.resolved.at(-1)?.AZAD_CLI_RELEASE_SHA).toBe(revision)
 })
 
+test("Mini Apps turned off reach setup as none", async () => {
+  const f = fixture("postgres")
+  f.config.save({ ...f.config.read(), AZAD_CLI_MINIAPPS_DOMAIN: "none" })
+  await deployInstance(f.config, f.sources, f.questions, f.execute)
+  const setup = f.argv.find((args) => args[2] === "setup") ?? []
+  expect(setup[setup.indexOf("--miniapps-domain") + 1]).toBe("none")
+})
 
 function bootstrapFixture() {
   const f = fixture("postgres")
@@ -530,6 +540,7 @@ test("Google Cloud: setup writes the variables, then each plan is shown and appl
   )
   expect(JSON.stringify(f.calls)).not.toContain("-auto-approve")
   expect(JSON.stringify(f.calls)).not.toContain("fixture-secret")
+  expect(helper[0].args).not.toContain("--miniapps-domain")
   expect(f.config.read().AZAD_CLI_RELEASE_SHA).toBe(revision)
   expect(f.notes.at(-1)).toContain("https://board.example.com")
   expect(f.notes.at(-1)).toContain(

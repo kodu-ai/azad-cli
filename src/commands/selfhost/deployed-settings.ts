@@ -10,7 +10,8 @@ import { configure, type Questions } from "./wizard"
  * project and region, the hostname and Cloudflare account, file storage, the
  * Google Cloud variables `setup` writes once (sizing, agent machine, disk
  * backups, the Cloud SQL runner network), how Cloudflare is reached and, on
- * Cloudflare, the features its scoped tokens were created for.
+ * Cloudflare, the features and Mini Apps domain its scoped tokens were
+ * created for.
  */
 const FIXED_SETTINGS: {
   key: string
@@ -37,9 +38,15 @@ const FIXED_SETTINGS: {
   { key: "STORAGE_BUCKET" },
   { key: "STORAGE_ENDPOINT" },
   { key: "STORAGE_REGION" },
-  // Google Cloud runs Mini Apps on the Worker Loader and keeps project
-  // repositories in the cluster; neither needs a Cloudflare token there.
-  { key: "AZAD_SELF_HOST_MINIAPPS", choice: "miniapps", cloudflareOnly: true },
+  // On Cloudflare the scoped tokens cover the Mini Apps domain's zone and
+  // setup routes it. Google Cloud runs Mini Apps on the Worker Loader and
+  // keeps project repositories in the cluster; neither needs a Cloudflare
+  // token there.
+  {
+    key: "AZAD_CLI_MINIAPPS_DOMAIN",
+    choice: "miniApps",
+    cloudflareOnly: true,
+  },
   {
     key: "AZAD_CLI_MANAGED_SOURCE",
     choice: "managedSource",
